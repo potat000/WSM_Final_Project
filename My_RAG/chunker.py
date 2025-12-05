@@ -1,3 +1,5 @@
+# 可以考慮替換成langchain的RecursiveCharacterTextSplitter 在助教的12/3投影片
+
 def chunk_documents(docs, language, chunk_size=300, chunk_overlap=50):
     chunks = []
     for doc_index, doc in enumerate(docs):
