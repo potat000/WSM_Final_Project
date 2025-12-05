@@ -1,4 +1,4 @@
-def chunk_documents(docs, language, chunk_size=1000, chunk_overlap=200):
+def chunk_documents(docs, language, chunk_size=300, chunk_overlap=50):
     chunks = []
     for doc_index, doc in enumerate(docs):
         if 'content' in doc and isinstance(doc['content'], str) and 'language' in doc:

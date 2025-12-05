@@ -103,5 +103,5 @@ python version == 3.10
 configs資料夾內新增一個檔案名為config_local.yaml，host依照ollama預設為host: "http://localhost:11434"
 # 修改以下內容將兩次助教給的sample code做整合
 1. dragonball_dataset/queries_test內的測試資料為第一次final project助教課的測試資料，其內含ground truth可以用來evaluation，可以藉此作為我們初步系統評分測試
-2. rageval/evaluation/main.py 修改main()內第71行所使用的評估模型為granite:3b，就不用再多去下載大模型
+2. rageval/evaluation/main.py 修改main()內第72行所使用的評估模型為granite4:3b，就不用再多去下載大模型
 3. run.sh 內部關於query指向的資料夾有做修改，先將其改向./dragonball_dataset/queries_test/做測試及評估
