@@ -1,7 +1,7 @@
 # 可以考慮替換成langchain的RecursiveCharacterTextSplitter 在助教的12/3投影片
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-def chunk_documents(docs, language, chunk_size=450, chunk_overlap=90):
+def chunk_documents(docs, language, chunk_size=1000, chunk_overlap=200):
     """
     使用 RecursiveCharacterTextSplitter 進行文檔分塊
     
@@ -14,16 +14,16 @@ def chunk_documents(docs, language, chunk_size=450, chunk_overlap=90):
     Returns:
         chunks: 分塊列表，每個包含 'page_content' 和 'metadata'
     """
-    '''
+    
     if language == "zh":
         chunk_size = 450
         chunk_overlap = 90
     else:
-        chunk_size = 700
-        chunk_overlap = 140
+        chunk_size = 1000
+        chunk_overlap = 200
         # Generation best
         # (800, 120) --> 如果沒有要優化 prompt（配置最平衡）
-    '''
+    
     chunks = []
     
     # 根據語言選擇不同的分隔符
