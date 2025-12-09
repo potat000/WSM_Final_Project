@@ -4,6 +4,7 @@ from chunker import chunk_documents
 from database import ChromaDBManager
 from generator import generate_answer
 from retriever import create_retriever
+from reranker import Reranker, HybridRerankRetriever
 from tqdm import tqdm
 from utils import load_jsonl, save_jsonl
 
@@ -37,9 +38,12 @@ def main(
     language,
     output_path,
     use_hybrid=False,
+    use_rerank=False,
     chroma_path="./my_vector_db",
     retrieval_method="rrf",
     top_k=3,
+    stage1_top_k=20,
+    rerank_model="BAAI/bge-reranker-v2-m3",
     alpha=0.5,
     rrf_k=60,
 ):
@@ -105,27 +109,49 @@ def main(
     print("Creating retriever...")
     print(f"{'=' * 60}")
 
-    retriever = create_retriever(
+    base_retriever = create_retriever(
         chunks=chunks,
         language=language,
         chroma_manager=chroma_manager,
         use_hybrid=use_hybrid and chroma_manager is not None,
     )
+    
+    # 5. Add Re-ranking Layer (如果啟用)
+    if use_rerank:
+        print(f"\n{'=' * 60}")
+        print("Initializing Re-ranker (Two-Stage Retrieval)...")
+        print(f"{'=' * 60}")
+        
+        reranker = Reranker(model_name=rerank_model)
+        retriever = HybridRerankRetriever(
+            base_retriever=base_retriever,
+            reranker=reranker,
+            stage1_top_k=stage1_top_k,
+            stage2_top_k=top_k
+        )
+        
+        print(f"Stage 1 (Retrieval): Top-{stage1_top_k}")
+        print(f"Stage 2 (Re-ranking): Top-{top_k}")
+        print(f"Re-ranker Model: {rerank_model}")
+    else:
+        retriever = base_retriever
 
     # 設定混合檢索參數
     if hasattr(retriever, "set_params"):
         retriever.set_params(alpha=alpha, rrf_k=rrf_k)
-        print(f"Method: {retrieval_method.upper()}")
-        if retrieval_method == "weighted":
-            print(f"  - BM25 weight: {alpha}")
-            print(f"  - Vector weight: {1 - alpha}")
-        else:
-            print(f"  - RRF k: {rrf_k}")
+        if use_hybrid:
+            print(f"Method: {retrieval_method.upper()}")
+            if retrieval_method == "weighted":
+                print(f"  - BM25 weight: {alpha}")
+                print(f"  - Vector weight: {1 - alpha}")
+            else:
+                print(f"  - RRF k: {rrf_k}")
 
-    print(f"Top-k: {top_k}")
+    if not use_rerank:
+        print(f"Top-k: {top_k}")
     print("Retriever created successfully.")
 
-    # 5. Process Queries
+    # 6. Process Queries
     print(f"\n{'=' * 60}")
     print("Processing queries...")
     print(f"{'=' * 60}")
@@ -138,7 +164,7 @@ def main(
             hasattr(retriever, "retrieve")
             and "method" in retriever.retrieve.__code__.co_varnames
         ):
-            # HybridRetriever
+            # HybridRetriever or HybridRerankRetriever
             retrieved_chunks = retriever.retrieve(
                 query_text, top_k=top_k, method=retrieval_method
             )
@@ -146,14 +172,11 @@ def main(
             # BM25Retriever
             retrieved_chunks = retriever.retrieve(query_text, top_k=top_k)
 
-        # 生成答案 (保留遠端和本地共有的邏輯)
-        # 注意: 如果您的 generate_answer 函式需要 language 參數 (像遠端版本那樣)，
-        # 您需要將其加入 (我們假設遠端版本是更新的)
+        # 生成答案
         answer = generate_answer(query_text, retrieved_chunks, language)
-
         query["prediction"]["content"] = answer
 
-        # 儲存 References
+        # 儲存 References（根據語言分離策略）
         if language == "zh":
             # 中文：保存所有 chunks
             query["prediction"]["references"] = [
@@ -163,7 +186,7 @@ def main(
             # 英文：只保存第一個
             query["prediction"]["references"] = [retrieved_chunks[0]["page_content"]]
 
-    # 6. Save Results
+    # 7. Save Results
     save_jsonl(output_path, queries)
     print(f"\n{'=' * 60}")
     print(f"✅ Predictions saved at '{output_path}'")
@@ -203,6 +226,24 @@ if __name__ == "__main__":
         "--alpha", type=float, default=0.5, help="BM25 weight for weighted method (0-1)"
     )
     parser.add_argument("--rrf_k", type=int, default=60, help="RRF smoothing parameter")
+    
+    # Re-ranking 參數
+    parser.add_argument(
+        "--use_rerank",
+        action="store_true",
+        help="Enable re-ranking (Two-Stage Retrieval)",
+    )
+    parser.add_argument(
+        "--stage1_top_k",
+        type=int,
+        default=20,
+        help="Stage 1 retrieval count (before re-ranking)",
+    )
+    parser.add_argument(
+        "--rerank_model",
+        default="BAAI/bge-reranker-v2-m3",
+        help="Re-ranker model name",
+    )
 
     args = parser.parse_args()
 
@@ -212,9 +253,12 @@ if __name__ == "__main__":
         language=args.language,
         output_path=args.output,
         use_hybrid=args.use_hybrid,
+        use_rerank=args.use_rerank,
         chroma_path=args.chroma_path,
         retrieval_method=args.retrieval_method,
         top_k=args.top_k,
+        stage1_top_k=args.stage1_top_k,
+        rerank_model=args.rerank_model,
         alpha=args.alpha,
         rrf_k=args.rrf_k,
     )

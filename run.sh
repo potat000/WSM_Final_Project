@@ -17,20 +17,19 @@ run_results() {
     
     log "[INFO] Running inference for language: ${language}"
     
-    # 使用 Hybrid Retrieval + 調整參數
-    python3 ./My_RAG/main.py \
+    # BM25 + Re-rank：先取 20 筆再重排成 5 筆
+    python ./My_RAG/main.py \
         --query_path ./dragonball_dataset/queries_test/test_queries_${language}.jsonl \
         --docs_path ./dragonball_dataset/dragonball_docs.jsonl \
         --language ${language} \
         --output ./predictions/predictions_${language}.jsonl \
-        --use_hybrid \
-        --retrieval_method rrf \
-        --top_k 5 \
-        --rrf_k 60
+        --top_k 3 \
+        --use_rerank \
+        --stage1_top_k 20
     
     log "[INFO] Checking output format for language: ${language}"
     
-    python3 ./check_output_format.py \
+    python ./check_output_format.py \
         --query_file ./dragonball_dataset/queries_test/test_queries_${language}.jsonl \
         --processed_file ./predictions/predictions_${language}.jsonl
     
