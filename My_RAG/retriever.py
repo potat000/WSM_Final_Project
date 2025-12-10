@@ -325,6 +325,10 @@ def create_dense_retriever(chunks, language, chroma_manager=None):
     print("Creating Dense Retriever")
     return DenseRetriever(chunks, language, chroma_manager)
 
+def create_bm25_retriever(chunks, language):
+    print("Creating BM25 Retriever...")
+    return BM25Retriever(chunks, language)
+
 def create_retriever(chunks, language, chroma_manager=None, use_hybrid=True):
     """
     創建檢索器
