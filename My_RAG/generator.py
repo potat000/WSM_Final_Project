@@ -43,22 +43,15 @@ def generate_answer(query: str, context_chunks: list, language: str = "en") -> s
     """
     根據語言生成對應的 Prompt 並調用 LLM
     
-    Args:
-        query: 用戶的問題
-        context_chunks: 檢索到的參考資料列表
-        language: 語言 ('zh' 或 'en')，由 main.py 傳入
-    
-    主要改進：
-    1. 雙語 Prompt（中文/英文分離）
-    2. 移除句數限制
-    3. 強調只使用提供的參考資料
-    4. 結構化的 Context 呈現
-    5. 要求完整回答
+    ⭐ 修正版：
+    1. temperature 保持低值 (0.1)
+    2. Prompt 非常嚴格（不允許推論）
+    3. 目標：重現 ID 10 的效果
     """
     # 格式化 context
     formatted_context = format_context(context_chunks)
     
-    # 根據語言選擇 Prompt
+    # 根據語言選擇 Prompt（嚴格版）
     if language == "zh":
         prompt = f"""你是一個專業的問答助手。請根據以下提供的參考資料回答問題。
 
@@ -68,12 +61,13 @@ def generate_answer(query: str, context_chunks: list, language: str = "en") -> s
 【問題】
 {query}
 
-【回答要求】
-1. 你的答案必須完全基於上述參考資料，不要使用參考資料以外的知識
-2. 如果參考資料中沒有足夠的資訊來回答問題，請明確說明「根據提供的參考資料，無法完整回答此問題」
-3. 請提供清晰、完整、準確的答案，包含所有相關的重要細節
-4. 直接回答問題，不需要額外的開場白或結尾
-5. 如果參考資料中的資訊有衝突，請指出並說明
+【重要規則】
+1. 你的答案必須完全基於上述參考資料
+2. 不要使用參考資料以外的知識或資訊
+3. 不要推測、推論或猜測
+4. 如果參考資料中沒有足夠的資訊來回答問題，請明確說明「根據提供的參考資料，無法完整回答此問題」
+5. 請提供清晰、完整、準確的答案，包含所有相關的重要細節
+6. 直接回答問題，不需要額外的開場白或結尾
 
 【答案】"""
     else:  # English
@@ -85,12 +79,13 @@ def generate_answer(query: str, context_chunks: list, language: str = "en") -> s
 [Question]
 {query}
 
-[Requirements]
-1. Your answer must be based entirely on the reference materials above. Do not use knowledge outside the provided references.
-2. If the reference materials do not contain sufficient information to answer the question, clearly state "Based on the provided reference materials, this question cannot be fully answered."
-3. Provide a clear, complete, and accurate answer that includes all relevant important details.
-4. Answer directly without unnecessary preamble or conclusion.
-5. If there are conflicting information in the reference materials, point it out and explain.
+[Critical Rules]
+1. Your answer must be based entirely on the reference materials above
+2. Do not use knowledge or information outside the provided references
+3. Do not speculate, infer, or guess
+4. If the reference materials do not contain sufficient information to answer the question, clearly state "Based on the provided reference materials, this question cannot be fully answered"
+5. Provide a clear, complete, and accurate answer that includes all relevant important details
+6. Answer directly without unnecessary preamble or conclusion
 
 [Answer]"""
     
@@ -98,15 +93,15 @@ def generate_answer(query: str, context_chunks: list, language: str = "en") -> s
     ollama_config = load_ollama_config()
     client = Client(host=ollama_config["host"])
     
-    # 調整 LLM 參數以獲得更好的輸出
+    # ⭐ 修正：temperature 保持低值
     response = client.generate(
         model=ollama_config["model"],
         prompt=prompt,
         options={
-            "temperature": 0.1,      # 降低隨機性，提高一致性
-            "num_predict": 512,      # 允許更長的回答
-            "top_p": 0.9,           # Nucleus sampling
-            "top_k": 40,            # Top-K sampling
+            "temperature": 0.1,      # 修正：保持低值（不是 0.3）
+            "num_predict": 512,      # 可以測試 512
+            "top_p": 0.9,
+            "top_k": 40,
         }
     )
     

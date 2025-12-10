@@ -17,15 +17,15 @@ run_results() {
     
     log "[INFO] Running inference for language: ${language}"
     
-    # BM25 + Re-rank：先取 20 筆再重排成 5 筆
+    # BM25 + Re-rank (Stage1: top-20 → Stage2: top-3)
     python ./My_RAG/main.py \
         --query_path ./dragonball_dataset/queries_test/test_queries_${language}.jsonl \
         --docs_path ./dragonball_dataset/dragonball_docs.jsonl \
         --language ${language} \
         --output ./predictions/predictions_${language}.jsonl \
-        --top_k 3 \
         --use_rerank \
-        --stage1_top_k 20
+        --stage1_top_k 20 \
+        --top_k 3
     
     log "[INFO] Checking output format for language: ${language}"
     
