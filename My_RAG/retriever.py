@@ -59,10 +59,10 @@ class HybridRetriever:
         self.collection_name = f"docs_{language}" if chroma_manager else None
 
         # 可調參數
-        self.alpha = 0.5  # BM25 權重 (0-1)，vector 權重為 (1-alpha)
+        self.alpha = 0.7  # BM25 權重 (0-1)，vector 權重為 (1-alpha)
         self.rrf_k = 60  # RRF 平滑參數
 
-    def retrieve(self, query, top_k=5, method="rrf"):
+    def retrieve(self, query, top_k=3, method="rrf",where_filter=None):
         """
         混合檢索主函數
 
@@ -76,6 +76,7 @@ class HybridRetriever:
         """
         # 如果沒有 ChromaDB，退回到純 BM25
         if self.chroma_manager is None:
+            print("使用純BM25")
             return self.bm25_retriever.retrieve(query, top_k)
 
         # 1. BM25 檢索 (取 2*top_k 增加覆蓋率)
@@ -84,7 +85,7 @@ class HybridRetriever:
         # 2. Vector 檢索 (取 2*top_k)
         try:
             chroma_results = self.chroma_manager.query_chunks(
-                collection_name=self.collection_name, query_text=query, top_k=top_k * 2
+                collection_name=self.collection_name, query_text=query, top_k=top_k * 2,where_filter=where_filter
             )
 
             # 將 ChromaDB 結果轉換為統一格式
@@ -225,6 +226,7 @@ class HybridRetriever:
 
             if chunk_id in scores:
                 scores[chunk_id] += rrf_score
+                print("叮咚 累加重複計算！")
             else:
                 scores[chunk_id] = rrf_score
                 chunk_data[chunk_id] = result
@@ -248,6 +250,92 @@ class HybridRetriever:
         if rrf_k is not None:
             self.rrf_k = rrf_k
 
+class DenseRetriever:
+    def __init__(self, chunks, language, chroma_manager=None):
+        self.chunks = chunks
+        self.language = language
+
+        # ChromaDB 檢索器
+        self.chroma_manager = chroma_manager
+        self.collection_name = f"docs_{language}" if chroma_manager else None
+
+
+    def retrieve(self, query, top_k=3, where_filter=None):
+        """
+        混合檢索主函數
+
+        Args:
+            query: 查詢文本
+            top_k: 最終返回數量
+            method: 合併方法 ("rrf" 或 "weighted")
+
+        Returns:
+            List of chunks with scores
+        """
+        # 如果沒有 ChromaDB，退回到純 BM25
+        if self.chroma_manager is None:
+            print("沒有初始化chroma")
+
+        # Vector 檢索 (取 2*top_k)
+        try:
+            chroma_results = self.chroma_manager.query_chunks(
+                collection_name=self.collection_name, query_text=query, top_k=top_k * 2,where_filter=where_filter
+            )
+
+            # 將 ChromaDB 結果轉換為統一格式
+            vector_results = self._parse_chroma_results(chroma_results)
+
+        except Exception as e:
+            print(f"Vector search failed: {e}, falling back to BM25 only")
+
+        return vector_results
+
+    def _parse_chroma_results(self, chroma_results: Optional[Dict]) -> List[Dict]:
+        """
+        將 ChromaDB 的查詢結果轉換為統一格式
+
+        ChromaDB 返回格式:
+        {
+            'ids': [['id1', 'id2', ...]],
+            'documents': [['text1', 'text2', ...]],
+            'metadatas': [[{...}, {...}, ...]],
+            'distances': [[0.5, 0.7, ...]]  # 距離越小越相似
+        }
+        """
+        if not chroma_results:
+            return []
+
+        # ChromaDB 返回的是嵌套列表
+        ids = chroma_results.get("ids", [[]])[0]
+        documents = chroma_results.get("documents", [[]])[0]
+        metadatas = chroma_results.get("metadatas", [[]])[0]
+        distances = chroma_results.get("distances", [[]])[0]
+
+        results = []
+        for i, doc_id in enumerate(ids):
+            # 將距離轉換為相似度分數 (距離越小，相似度越高)
+            # 使用公式: similarity = 1 - distance
+            distance = distances[i]
+            similarity_score = 1.0 - distance
+
+            result = {
+                "chunk_id": int(doc_id) if doc_id.isdigit() else doc_id,
+                "page_content": documents[i] if i < len(documents) else "",
+                "metadata": metadatas[i] if i < len(metadatas) else {},
+                "score": similarity_score,
+                "distance": distance,
+            }
+            results.append(result)
+
+        return results
+
+def create_dense_retriever(chunks, language, chroma_manager=None):
+    print("Creating Dense Retriever")
+    return DenseRetriever(chunks, language, chroma_manager)
+
+def create_bm25_retriever(chunks, language):
+    print("Creating BM25 Retriever...")
+    return BM25Retriever(chunks, language)
 
 def create_retriever(chunks, language, chroma_manager=None, use_hybrid=True):
     """
