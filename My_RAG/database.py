@@ -1,7 +1,7 @@
 import chromadb
 from typing import List, Dict, Union, Optional, Any
 import os # 用於檢查持久化路徑
-
+import chromadb.utils.embedding_functions as embedding_functions
 class ChromaDBManager:
     """
     用於管理 ChromaDB 客戶端和數據 Collection 的類別。
@@ -19,7 +19,24 @@ class ChromaDBManager:
         self.persist_directory = persist_directory
         self.client: Optional[chromadb.Client] = None
         self.collections: Dict[str, chromadb.Collection] = {}
-
+        # 1. 設定模型路徑 (指向專案內的 models 資料夾)
+        # 這裡的邏輯是：不管程式在哪執行，都去抓相對位置的 models 資料夾
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # 嘗試幾種常見路徑 (本地開發 vs Docker 環境)
+        model_path = os.path.join(current_dir, "..", "models", "all-MiniLM-L6-v2")
+        # =================================================
+        # 2. 初始化 Embedding Function (強制使用本地模型)
+        # =================================================
+        try:
+            self.embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
+                model_name=model_path
+            )
+        except Exception as e:
+            print(f"❌ 模型載入失敗: {e}")
+            # 這裡建議直接 raise 錯誤，不要讓程式繼續跑
+            raise e
+        
         # 1. 初始化 ChromaDB 客戶端
         try:
             # 確保路徑存在
@@ -41,7 +58,7 @@ class ChromaDBManager:
 
         for name in collection_names:
             try:
-                collection = self.client.get_or_create_collection(name=name)
+                collection = self.client.get_or_create_collection(name=name,embedding_function = self.embedding_fn)
                 self.collections[name] = collection
                 print(f"   -> Collection '{name}' 已準備就緒。")
             except Exception as e:
