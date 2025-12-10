@@ -7,7 +7,8 @@ from retriever import create_retriever
 from reranker import Reranker, HybridRerankRetriever
 from tqdm import tqdm
 from utils import load_jsonl, save_jsonl
-
+import os
+import re
 
 def prepare_chroma_data(chunks):
     """準備 ChromaDB 需要的數據格式"""
@@ -53,6 +54,27 @@ def main(
     queries = load_jsonl(query_path)
     print(f"Loaded {len(docs_for_chunking)} documents.")
     print(f"Loaded {len(queries)} queries.")
+
+    # 載入公司名單 (進行query正規化搜索)
+    company_pattern = None
+    try:
+        if os.path.exists('./dragonball_dataset/company_names.txt'):
+            with open('./dragonball_dataset/company_names.txt', 'r', encoding='utf-8') as f:
+                # 讀取並去除空白
+                company_list = [line.strip() for line in f if line.strip()]
+            
+            # 關鍵：按長度由大到小排序，避免「華夏娛樂」只匹配到「華夏」
+            company_list.sort(key=len, reverse=True)
+            
+            if company_list:
+                # 建立 Regex Pattern: (华夏娱乐有限公司|农业发展有限公司|...)
+                pattern_str = '|'.join(map(re.escape, company_list))
+                company_pattern = re.compile(f"({pattern_str})")
+                print(f"✅ 已載入 {len(company_list)} 間公司名單用於過濾。")
+        else:
+            print("⚠️ 警告：找不到 company_names.txt，將不會進行公司過濾。")
+    except Exception as e:
+        print(f"⚠️ 載入公司名單時發生錯誤: {e}")
 
     # 2. Chunk Documents
     print("Chunking documents...")
@@ -114,6 +136,7 @@ def main(
         language=language,
         chroma_manager=chroma_manager,
         use_hybrid=use_hybrid and chroma_manager is not None,
+        only_dense=True 
     )
     
     # 5. Add Re-ranking Layer (如果啟用)
@@ -158,7 +181,16 @@ def main(
 
     for query in tqdm(queries, desc="Processing Queries"):
         query_text = query["query"]["content"]
-
+        target_company = None
+        if company_pattern:
+            match = company_pattern.search(query_text)
+            if match:
+                target_company = match.group(1)
+                print(f"偵測到公司: {target_company}") # 除錯用
+                
+        # 建立 ChromaDB 需要的 filter 格式
+        # 如果有抓到公司，就設定 where={"company_name": "xxx"}，否則為 None
+        where_filter = {"company_name": target_company} if target_company else None
         # 檢索相關文檔
         if (
             hasattr(retriever, "retrieve")
@@ -166,16 +198,18 @@ def main(
         ):
             # HybridRetriever or HybridRerankRetriever
             retrieved_chunks = retriever.retrieve(
-                query_text, top_k=top_k, method=retrieval_method
+                query_text, top_k=top_k, method=retrieval_method, where_filter= where_filter
             )
         else:
             # BM25Retriever
             retrieved_chunks = retriever.retrieve(query_text, top_k=top_k)
+            # Dense Retriever
+            #retrieved_chunks = retriever.retrieve(query, top_k=top_k,where_filter=where_filter)
 
         # 生成答案
         answer = generate_answer(query_text, retrieved_chunks, language)
         query["prediction"]["content"] = answer
-
+        print(retrieved_chunks)
         # 儲存 References（根據語言分離策略）
         if language == "zh":
             # 中文：保存所有 chunks
@@ -185,6 +219,7 @@ def main(
         else:  # English
             # 英文：只保存第一個
             query["prediction"]["references"] = [retrieved_chunks[0]["page_content"]]
+
 
     # 7. Save Results
     save_jsonl(output_path, queries)
