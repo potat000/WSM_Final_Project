@@ -38,7 +38,7 @@ class BM25Retriever:
         for idx in top_indices:
             chunk = self.chunks[idx].copy()
             chunk["score"] = float(scores[idx])
-            chunk["chunk_id"] = idx
+            chunk["chunk_id"] = str(idx)
             results.append(chunk)
 
         return results
@@ -131,13 +131,21 @@ class HybridRetriever:
 
         results = []
         for i, doc_id in enumerate(ids):
+            chunk_id = str(doc_id)
+
+            # 只印第一筆確認 ID 轉換
+            if i == 0:
+                print(
+                    f"\n🔍 [ID Mapping Check] 原始={doc_id!r} ({type(doc_id).__name__}) → 轉換後={chunk_id!r} ({type(chunk_id).__name__})"
+                )
+
             # 將距離轉換為相似度分數 (距離越小，相似度越高)
             # 使用公式: similarity = 1 / (1 + distance)
             distance = distances[i] if i < len(distances) else 1.0
             similarity_score = 1.0 / (1.0 + distance)
 
             result = {
-                "chunk_id": int(doc_id) if doc_id.isdigit() else doc_id,
+                "chunk_id": str(doc_id),
                 "page_content": documents[i] if i < len(documents) else "",
                 "metadata": metadatas[i] if i < len(metadatas) else {},
                 "score": similarity_score,
@@ -164,7 +172,7 @@ class HybridRetriever:
 
         # 處理 BM25 結果
         for result in bm25_results:
-            chunk_id = result["chunk_id"]
+            chunk_id = result["chunk_id"]  # 已經是字串
             normalized_score = result["score"] / max_bm25
             scores[chunk_id] = self.alpha * normalized_score
             chunk_data[chunk_id] = result
