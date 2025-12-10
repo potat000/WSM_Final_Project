@@ -3,7 +3,7 @@ import argparse
 from chunker import chunk_documents
 from database import ChromaDBManager
 from generator import generate_answer
-from retriever import create_retriever
+from retriever import create_retriever,create_dense_retriever
 from reranker import Reranker, HybridRerankRetriever
 from tqdm import tqdm
 from utils import load_jsonl, save_jsonl
@@ -83,7 +83,7 @@ def main(
 
     # 3. Initialize ChromaDB (如果使用混合檢索)
     chroma_manager = None
-    if use_hybrid:
+    if True:
         print(f"\n{'=' * 60}")
         print("Initializing ChromaDB for Hybrid Retrieval...")
         print(f"{'=' * 60}")
@@ -131,34 +131,17 @@ def main(
     print("Creating retriever...")
     print(f"{'=' * 60}")
 
-    base_retriever = create_retriever(
+    # retriever = create_retriever(
+    #     chunks=chunks,
+    #     language=language,
+    #     chroma_manager=chroma_manager,
+    #     use_hybrid=use_hybrid and chroma_manager is not None
+    # )
+    retriever = create_dense_retriever(
         chunks=chunks,
         language=language,
         chroma_manager=chroma_manager,
-        use_hybrid=use_hybrid and chroma_manager is not None,
-        only_dense=True 
     )
-    
-    # 5. Add Re-ranking Layer (如果啟用)
-    if use_rerank:
-        print(f"\n{'=' * 60}")
-        print("Initializing Re-ranker (Two-Stage Retrieval)...")
-        print(f"{'=' * 60}")
-        
-        reranker = Reranker(model_name=rerank_model)
-        retriever = HybridRerankRetriever(
-            base_retriever=base_retriever,
-            reranker=reranker,
-            stage1_top_k=stage1_top_k,
-            stage2_top_k=top_k
-        )
-        
-        print(f"Stage 1 (Retrieval): Top-{stage1_top_k}")
-        print(f"Stage 2 (Re-ranking): Top-{top_k}")
-        print(f"Re-ranker Model: {rerank_model}")
-    else:
-        retriever = base_retriever
-
     # 設定混合檢索參數
     if hasattr(retriever, "set_params"):
         retriever.set_params(alpha=alpha, rrf_k=rrf_k)
@@ -170,8 +153,8 @@ def main(
             else:
                 print(f"  - RRF k: {rrf_k}")
 
-    if not use_rerank:
-        print(f"Top-k: {top_k}")
+
+    print(f"Top-k: {top_k}")
     print("Retriever created successfully.")
 
     # 6. Process Queries
@@ -261,24 +244,6 @@ if __name__ == "__main__":
         "--alpha", type=float, default=0.5, help="BM25 weight for weighted method (0-1)"
     )
     parser.add_argument("--rrf_k", type=int, default=60, help="RRF smoothing parameter")
-    
-    # Re-ranking 參數
-    parser.add_argument(
-        "--use_rerank",
-        action="store_true",
-        help="Enable re-ranking (Two-Stage Retrieval)",
-    )
-    parser.add_argument(
-        "--stage1_top_k",
-        type=int,
-        default=20,
-        help="Stage 1 retrieval count (before re-ranking)",
-    )
-    parser.add_argument(
-        "--rerank_model",
-        default="BAAI/bge-reranker-v2-m3",
-        help="Re-ranker model name",
-    )
 
     args = parser.parse_args()
 
@@ -288,12 +253,9 @@ if __name__ == "__main__":
         language=args.language,
         output_path=args.output,
         use_hybrid=args.use_hybrid,
-        use_rerank=args.use_rerank,
         chroma_path=args.chroma_path,
         retrieval_method=args.retrieval_method,
         top_k=args.top_k,
-        stage1_top_k=args.stage1_top_k,
-        rerank_model=args.rerank_model,
         alpha=args.alpha,
         rrf_k=args.rrf_k,
     )
