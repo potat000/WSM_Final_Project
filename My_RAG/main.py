@@ -217,6 +217,10 @@ def main(
             retrieved_chunks = bm25_retriever.retrieve(query_text, top_k=top_k)
 
         # 生成答案
+        if language == "zh":
+            answer = generate_answer(query_text, retrieved_chunks, language)
+        else:
+            answer = generate_answer(query_text,[retrieved_chunks[0]],language)
         # if language == "zh":
         #     answer = generate_answer(query_text, retrieved_chunks, language)
         # elif language == "en" and not multi_ref:
@@ -224,7 +228,7 @@ def main(
         #     answer = generate_answer(query_text,[retrieved_chunks[0]],language)
         # else:
         #     answer = generate_answer(query_text, retrieved_chunks, language)
-        answer = generate_answer(query_text, retrieved_chunks, language)
+        #answer = generate_answer(query_text, retrieved_chunks, language)
         query["prediction"]["content"] = answer
         print(retrieved_chunks)
         # 儲存 References（根據語言分離策略）
@@ -240,10 +244,10 @@ def main(
             # else:
             #     query["prediction"]["references"] = [retrieved_chunks[0]["page_content"]]
 
-            query["prediction"]["references"] = [
-                chunk["page_content"] for chunk in retrieved_chunks
-            ]
-            #query["prediction"]["references"] = [retrieved_chunks[0]["page_content"]]
+            # query["prediction"]["references"] = [
+            #     chunk["page_content"] for chunk in retrieved_chunks
+            # ]
+            query["prediction"]["references"] = [retrieved_chunks[0]["page_content"]]
 
 
     # 7. Save Results

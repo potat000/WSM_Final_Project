@@ -19,8 +19,8 @@ def chunk_documents(docs, language, chunk_size=1000, chunk_overlap=200):
         chunk_size = 450
         chunk_overlap = 90
     else:
-        chunk_size = 500
-        chunk_overlap = 100
+        chunk_size = 1000
+        chunk_overlap = 200
         # Generation best
         # (800, 120) --> 如果沒有要優化 prompt（配置最平衡）
     
