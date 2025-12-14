@@ -23,7 +23,7 @@ run_results() {
         --docs_path ./dragonball_dataset/dragonball_docs.jsonl \
         --language ${language} \
         --output ./predictions/predictions_${language}.jsonl \
-        --top_k 3 
+        --top_k 3
     
     log "[INFO] Checking output format for language: ${language}"
     

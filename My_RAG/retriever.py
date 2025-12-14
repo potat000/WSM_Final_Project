@@ -20,7 +20,7 @@ class BM25Retriever:
 
         self.bm25 = BM25Okapi(self.tokenized_corpus)
 
-    def retrieve(self, query, top_k=5):
+    def retrieve(self, query, top_k=3):
         """檢索並返回帶分數的結果"""
         if self.language == "zh":
             tokenized_query = list(jieba.cut(query))
@@ -272,14 +272,13 @@ class DenseRetriever:
         Returns:
             List of chunks with scores
         """
-        # 如果沒有 ChromaDB，退回到純 BM25
         if self.chroma_manager is None:
             print("沒有初始化chroma")
 
-        # Vector 檢索 (取 2*top_k)
+        # Vector 檢索
         try:
             chroma_results = self.chroma_manager.query_chunks(
-                collection_name=self.collection_name, query_text=query, top_k=top_k * 2,where_filter=where_filter
+                collection_name=self.collection_name, query_text=query, top_k=top_k,where_filter=where_filter
             )
 
             # 將 ChromaDB 結果轉換為統一格式

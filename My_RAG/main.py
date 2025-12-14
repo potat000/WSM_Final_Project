@@ -101,10 +101,21 @@ def main(
 
         if existing_count == 0:
             print(f"Building ChromaDB index for {len(chunks)} chunks...")
-
+            print("Cleaning metadata entities...")
+            for chunk in chunks:
+                # 判斷 chunks 是字典還是物件 (根據您的實作調整)
+                # 假設 chunk 是字典，且 metadata 在 chunk['metadata']
+                # 如果 chunk 是 LangChain Document 物件，請改用 chunk.metadata
+                meta = chunk.get('metadata') if isinstance(chunk, dict) else chunk.metadata
+                if meta:
+                    # 1. 清洗醫院名稱 (去除 _病患名)
+                    if "hospital_patient_name" in meta and meta["hospital_patient_name"]:
+                        full_name = meta["hospital_patient_name"]
+                        # 只保留底線前的部分
+                        clean_name = full_name.split('_')[0] 
+                        meta["hospital_patient_name"] = clean_name
             # 準備數據
             texts, metadatas, ids = prepare_chroma_data(chunks)
-
             # 存入 ChromaDB
             success = chroma_manager.save_chunks_to_chroma(
                 collection_name=collection_name,
@@ -156,16 +167,43 @@ def main(
 
     for query in tqdm(queries, desc="Processing Queries"):
         query_text = query["query"]["content"]
-        target_company = None
+        multi_ref = False
+        # 1. 改用 findall 抓取所有公司名稱
+        target_companies = []
         if company_pattern:
-            match = company_pattern.search(query_text)
-            if match:
-                target_company = match.group(1)
-                print(f"偵測到公司: {target_company}") # 除錯用
-                
-        # 建立 ChromaDB 需要的 filter 格式
-        # 如果有抓到公司，就設定 where={"company_name": "xxx"}，否則為 None
-        where_filter = {"company_name": target_company} if target_company else None
+            # findall 會回傳一個 list，包含所有匹配的字串
+            # 注意：如果你的 regex 有多個括號 group，這裡回傳的格式可能會變 tuple，需視 regex 寫法而定
+            # 假設你的 pattern 是簡單的 (CleanCo|Retail Emporium|...)
+            found = company_pattern.findall(query_text)
+            
+            # 去除重複 (set) 並過濾雜訊
+            target_companies = list(set(found))
+            
+            if target_companies:
+                print(f"偵測到公司: {target_companies}")  # 除錯: 應該要看到 ['CleanCo', 'Retail Emporium']
+
+        # 建立 ChromaDB 需要的 filter
+        where_filter = None
+        
+        if target_companies:
+            # 1. 定義你要搜尋的所有 Metadata 欄位名稱
+            # 請確保這裡的 key 與你 ingest 入庫時的 key 一模一樣
+            search_keys = ["company_name", "court_name", "hospital_patient_name"]
+            
+            # 2. 建立所有可能的組合條件
+            # 邏輯：(公司名是A OR 法院名是A OR 醫院名是A) OR (公司名是B OR ...)
+            or_conditions = []
+            for entity in target_companies:
+                for key in search_keys:
+                    or_conditions.append({key: entity})
+            
+            # 3. 生成 Filter
+            if len(or_conditions) == 1:
+                # 極少見情況：只搜一個名稱且只搜一個欄位
+                where_filter = or_conditions[0]
+            else:
+                # 絕大多數情況都會走這裡，因為每個名稱都要搜 3 個欄位
+                where_filter = {"$or": or_conditions}
         # 檢索相關文檔
         if language == "en":
             # dense retriever
@@ -179,6 +217,13 @@ def main(
             retrieved_chunks = bm25_retriever.retrieve(query_text, top_k=top_k)
 
         # 生成答案
+        # if language == "zh":
+        #     answer = generate_answer(query_text, retrieved_chunks, language)
+        # elif language == "en" and not multi_ref:
+        #     print("單一檢索元")
+        #     answer = generate_answer(query_text,[retrieved_chunks[0]],language)
+        # else:
+        #     answer = generate_answer(query_text, retrieved_chunks, language)
         answer = generate_answer(query_text, retrieved_chunks, language)
         query["prediction"]["content"] = answer
         print(retrieved_chunks)
@@ -190,7 +235,15 @@ def main(
             ]
         else:  # English
             # 英文：只保存第一個
-            query["prediction"]["references"] = [retrieved_chunks[0]["page_content"]]
+            # if multi_ref:
+            #     query["prediction"]["references"] = [chunk["page_content"] for chunk in retrieved_chunks]
+            # else:
+            #     query["prediction"]["references"] = [retrieved_chunks[0]["page_content"]]
+
+            query["prediction"]["references"] = [
+                chunk["page_content"] for chunk in retrieved_chunks
+            ]
+            #query["prediction"]["references"] = [retrieved_chunks[0]["page_content"]]
 
 
     # 7. Save Results

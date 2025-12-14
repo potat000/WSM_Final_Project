@@ -34,7 +34,17 @@ def format_context(context_chunks: list) -> str:
     formatted_parts = []
     for i, chunk in enumerate(context_chunks, 1):
         content = chunk['page_content'].strip()
-        formatted_parts.append(f"[參考資料 {i}]\n{content}")
+        meta = chunk['metadata']  # 先把 metadata 變數抓出來，程式碼比較乾淨
+            
+        # 使用 .get() 安全讀取，並用 or 串接不同領域可能的欄位名稱
+        # 邏輯：有公司名就用公司名，沒有就找法院名，再沒有就找醫院/病患...
+        source_name = (
+            meta.get('company_name') or 
+            meta.get('court_name') or 
+            meta.get('hospital_patient_name')
+        )
+        print(f"測試 source ({i}):", source_name)
+        formatted_parts.append(f"[{source_name}]\n{content}")
     
     return "\n\n".join(formatted_parts)
 
@@ -55,7 +65,7 @@ def generate_answer(query: str, context_chunks: list, language: str = "en") -> s
     if language == "zh":
         prompt = f"""你是一個專業的問答助手。請根據以下提供的參考資料回答問題。
 
-【參考資料】
+【參考資料，皆與問題提及之公司相關】
 {formatted_context}
 
 【問題】
@@ -73,7 +83,7 @@ def generate_answer(query: str, context_chunks: list, language: str = "en") -> s
     else:  # English
         prompt = f"""You are a professional question-answering assistant. Answer the question based solely on the provided reference materials.
 
-[Reference Materials]
+[Reference Materials,all are relevant to the companies mentioned in the query]
 {formatted_context}
 
 [Question]
@@ -83,7 +93,7 @@ def generate_answer(query: str, context_chunks: list, language: str = "en") -> s
 1. Your answer must be based entirely on the reference materials above
 2. Do not use knowledge or information outside the provided references
 3. Do not speculate, infer, or guess
-4. If the reference materials do not contain sufficient information to answer the question, clearly state "Based on the provided reference materials, this question cannot be fully answered"
+4. If the provided documents do not contain the answer, explicitly state 'Unable to answer
 5. Provide a clear, complete, and accurate answer that includes all relevant important details
 6. Answer directly without unnecessary preamble or conclusion
 
@@ -98,7 +108,7 @@ def generate_answer(query: str, context_chunks: list, language: str = "en") -> s
         model=ollama_config["model"],
         prompt=prompt,
         options={
-            "temperature": 0.1,      # 修正：保持低值（不是 0.3）
+            "temperature": 0.0,      # 修正：保持低值（不是 0.3）
             "num_predict": 512,      # 可以測試 512
             "top_p": 0.9,
             "top_k": 40,

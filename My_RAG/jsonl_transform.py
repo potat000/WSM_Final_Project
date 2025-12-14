@@ -15,6 +15,14 @@ try:
                 data = json.loads(line)
                 if 'company_name' in data:
                     companies.append(data['company_name'])
+                if 'court_name' in data:
+                    companies.append(data['court_name'])
+                if 'hospital_patient_name' in data and data['hospital_patient_name']:
+                    # 修改重點：使用 split 切割字串，並只取第一個部分 ([0])
+                    # 例如: "雷峰市人民医院_马某某" -> ["雷峰市人民医院", "马某某"] -> 取 "雷峰市人民医院"
+                    full_name = data['hospital_patient_name']
+                    hospital_name = full_name.split('_')[0]
+                    companies.append(hospital_name)
 
     # 寫入 TXT 檔案
     with open(output_file, 'w', encoding='utf-8') as f:
