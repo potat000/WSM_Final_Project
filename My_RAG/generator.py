@@ -108,7 +108,7 @@ def generate_answer(query: str, context_chunks: list, language: str = "en") -> s
         model=ollama_config["model"],
         prompt=prompt,
         options={
-            "temperature": 0.1,      # 修正：保持低值（不是 0.3）
+            "temperature": 0.0,      # 修正：保持低值（不是 0.3）
             "num_predict": 512,      # 可以測試 512
             "top_p": 0.9,
             "top_k": 40,

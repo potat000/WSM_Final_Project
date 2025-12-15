@@ -1,10 +1,4 @@
-"""
-Re-ranking Module using Cross-Encoder
-根據 Tutorial4 的建議實作 Two-Stage Retrieval
-"""
-
-from typing import Dict, List
-
+from typing import List, Dict
 import numpy as np
 import requests
 from sentence_transformers import CrossEncoder
@@ -12,25 +6,30 @@ from sentence_transformers import CrossEncoder
 
 class RemoteFlagReranker:
     """
-    Fake FlagReranker class: same interface as the official one (More information can be found in FlagEmbedding; https://github.com/FlagOpen/FlagEmbedding),
-    but internally calls a remote API.
+    遠程 API Reranker（按照助教提供的接口）
+    與官方 FlagReranker 接口相同，但內部調用遠程 API
     """
 
-    def __init__(self, api_url: str):
+    def __init__(self, api_url: str = "http://ollama-gateway:11434/rerank"):
         """
-        api_url: your rerank endpoint
+        Args:
+            api_url: rerank endpoint URL
         """
         self.api_url = api_url
-        print(f"Initialized RemoteFlagReranker with API: {api_url}")
+        print(f"✅ Initialized RemoteFlagReranker with API: {api_url}")
 
     def compute_score(self, pairs, max_length=1024):
         """
-        pairs: list of [text1, text2], same as the official compute_score
-
-        return: score of each pair in np.ndarray, same as the official compute_score
+        計算 query-document pairs 的相關性分數
+        
+        Args:
+            pairs: list of [text1, text2]
+            max_length: 最大長度（API 固定為 1024）
+        
+        Returns:
+            scores: np.ndarray of relevance scores
         """
-        # API 限制：每次最多 32 pairs
-        MAX_BATCH_SIZE = 32
+        MAX_BATCH_SIZE = 32  # API 限制
 
         if len(pairs) > MAX_BATCH_SIZE:
             # 分批處理
@@ -45,7 +44,7 @@ class RemoteFlagReranker:
             return np.array(scores)
 
     def _compute_batch(self, pairs):
-        """處理單一批次的 pairs"""
+        """處理單個批次（≤32 pairs）"""
         payload = {"pairs": [{"text1": a, "text2": b} for a, b in pairs]}
 
         try:
@@ -54,7 +53,6 @@ class RemoteFlagReranker:
                 raise RuntimeError(
                     f"API request failed ({resp.status_code}): {resp.text}"
                 )
-
             scores = resp.json()["scores"]
             return scores
         except Exception as e:
@@ -64,52 +62,45 @@ class RemoteFlagReranker:
 
 class Reranker:
     """
-    Cross-Encoder Re-ranker for Two-Stage Retrieval
-
-    Stage 1: BM25/Hybrid retrieves many candidates (high recall)
-    Stage 2: Cross-Encoder re-ranks for precision
-
-    Supports both local model and remote API
+    統一的 Reranker 介面
+    支持本地 CrossEncoder 和遠程 API
     """
 
     def __init__(
         self,
+        mode: str = "remote",
+        api_url: str = "http://ollama-gateway:11434/rerank",
         model_name: str = "BAAI/bge-reranker-v2-m3",
-        use_remote: bool = False,
-        remote_api_url: str = "http://ollama-gateway:11434/rerank",
     ):
         """
-        初始化 Re-ranker
-
+        初始化 Reranker
+        
         Args:
-            model_name: Cross-Encoder 模型名稱
-                       - BAAI/bge-reranker-v2-m3: 多語言（Tutorial 推薦）
-                       - BAAI/bge-reranker-base: 英文
-                       - BAAI/bge-reranker-large: 英文（更準但更慢）
-            use_remote: 是否使用遠端 API（適合 CPU-only 環境）
-            remote_api_url: 遠端 API 的 URL
+            mode: "remote" (遠程 API) 或 "local" (本地模型)
+            api_url: 遠程 API URL
+            model_name: 本地模型名稱
         """
-        self.use_remote = use_remote
         self.model = None
+        self.mode = mode
 
-        if use_remote:
-            print(f"Using remote reranker API: {remote_api_url}")
+        if mode == "remote":
+            print(f"🌐 Using remote reranker API")
             try:
-                self.model = RemoteFlagReranker(remote_api_url)
-                print("✅ Remote re-ranker initialized successfully")
+                self.model = RemoteFlagReranker(api_url)
             except Exception as e:
-                print(f"❌ Failed to initialize remote re-ranker: {e}")
-                print("💡 Falling back to score-based ranking")
+                print(f"❌ Failed to initialize remote reranker: {e}")
                 self.model = None
-        else:
-            print(f"Loading local re-ranker model: {model_name}")
+        elif mode == "local":
+            print(f"💻 Loading local reranker model: {model_name}")
             try:
                 self.model = CrossEncoder(model_name)
-                print("✅ Local re-ranker loaded successfully")
+                print("✅ Local reranker loaded successfully")
             except Exception as e:
-                print(f"❌ Failed to load local re-ranker: {e}")
-                print("💡 Falling back to score-based ranking")
+                print(f"❌ Failed to load local reranker: {e}")
+                print("💡 Try: pip install sentence-transformers")
                 self.model = None
+        else:
+            raise ValueError(f"不支持的模式: {mode}，請使用 'remote' 或 'local'")
 
     def rerank(
         self,
@@ -120,13 +111,13 @@ class Reranker:
     ) -> List[Dict]:
         """
         使用 Cross-Encoder 重新排序檢索結果
-
+        
         Args:
-            query: 查詢文字
-            chunks: 候選文件列表，每個包含 'page_content' 和 'score'
-            top_k: 回傳的最終結果數量
+            query: 查詢文本
+            chunks: 候選文檔列表，每個包含 'page_content' 和 'score'
+            top_k: 返回的最終結果數量
             return_scores: 是否在結果中包含 rerank score
-
+            
         Returns:
             重新排序後的 top-k chunks
         """
@@ -137,19 +128,21 @@ class Reranker:
         if self.model is None:
             return self._fallback_ranking(chunks, top_k)
 
-        # 建立 (query, document) 配對
+        # 構建 (query, document) 對
         query_doc_pairs = [[query, chunk["page_content"]] for chunk in chunks]
 
-        # Cross-Encoder 計算相關性分數
         try:
-            if self.use_remote:
-                # 使用遠端 API 的 compute_score 方法
-                rerank_scores = self.model.compute_score(
-                    query_doc_pairs, max_length=1024
-                )
+            # 根據模式調用不同的方法
+            if self.mode == "remote":
+                # RemoteFlagReranker 使用 compute_score
+                rerank_scores = self.model.compute_score(query_doc_pairs, max_length=1024)
             else:
-                # 使用本地模型的 predict 方法
+                # CrossEncoder 使用 predict
                 rerank_scores = self.model.predict(query_doc_pairs)
+
+            # 確保是 numpy array
+            if not isinstance(rerank_scores, np.ndarray):
+                rerank_scores = np.array(rerank_scores)
 
             # 按分數排序（降序）
             ranked_indices = np.argsort(rerank_scores)[::-1]
@@ -157,7 +150,7 @@ class Reranker:
             # 取 top-k
             top_indices = ranked_indices[:top_k]
 
-            # 建立結果
+            # 構建結果
             reranked_chunks = []
             for idx in top_indices:
                 chunk = chunks[idx].copy()
@@ -182,115 +175,15 @@ class Reranker:
         """
         Fallback：使用原始檢索分數排序
         """
-        # 按原始 score 排序
         sorted_chunks = sorted(chunks, key=lambda x: x.get("score", 0), reverse=True)
         return sorted_chunks[:top_k]
 
 
-class HybridRerankRetriever:
-    """
-    結合 Hybrid Retrieval + Re-ranking 的完整檢索器
-
-    Pipeline:
-    1. Stage 1: Hybrid (BM25 + Vector) 檢索大量候選（top_k=20-50）
-    2. Stage 2: Cross-Encoder re-rank 精選結果（top_k=5）
-    """
-
-    def __init__(
-        self,
-        base_retriever,
-        reranker: Reranker = None,
-        stage1_top_k: int = 20,
-        stage2_top_k: int = 5,
-    ):
-        """
-        Args:
-            base_retriever: 基礎檢索器（BM25Retriever 或 HybridRetriever）
-            reranker: Re-ranking 模型
-            stage1_top_k: Stage 1 檢索數量（建議 20-50）
-            stage2_top_k: Stage 2 最終返回數量（通常 3-5）
-        """
-        self.base_retriever = base_retriever
-        self.reranker = reranker or Reranker()
-        self.stage1_top_k = stage1_top_k
-        self.stage2_top_k = stage2_top_k
-
-    def retrieve(self, query: str, top_k: int = 5, method: str = "rrf") -> List[Dict]:
-        """
-        Two-Stage Retrieval
-
-        Args:
-            query: 查詢文本
-            top_k: 最終返回數量（會覆蓋 stage2_top_k）
-            method: Hybrid 方法（如果使用 HybridRetriever）
-
-        Returns:
-            Re-ranked top-k chunks
-        """
-        # Stage 1: 檢索大量候選
-        if hasattr(self.base_retriever, "retrieve"):
-            # 檢查是否是 HybridRetriever
-            if "method" in self.base_retriever.retrieve.__code__.co_varnames:
-                candidates = self.base_retriever.retrieve(
-                    query, top_k=self.stage1_top_k, method=method
-                )
-            else:
-                # BM25Retriever
-                candidates = self.base_retriever.retrieve(
-                    query, top_k=self.stage1_top_k
-                )
-        else:
-            raise ValueError("base_retriever must have retrieve() method")
-
-        # Stage 2: Re-rank
-        reranked_results = self.reranker.rerank(
-            query, candidates, top_k=top_k or self.stage2_top_k
-        )
-
-        return reranked_results
-
-    def set_params(self, alpha=None, rrf_k=None, stage1_top_k=None, stage2_top_k=None):
-        """動態調整參數"""
-        if hasattr(self.base_retriever, "set_params"):
-            self.base_retriever.set_params(alpha=alpha, rrf_k=rrf_k)
-
-        if stage1_top_k is not None:
-            self.stage1_top_k = stage1_top_k
-
-        if stage2_top_k is not None:
-            self.stage2_top_k = stage2_top_k
-
-
-# 便捷函數
-def create_reranker(
-    model_name: str = "BAAI/bge-reranker-v2-m3",
-    use_remote: bool = False,
-    remote_api_url: str = "http://ollama-gateway:11434/rerank",
-) -> Reranker:
-    """
-    創建 Re-ranker
-
-    推薦模型（Tutorial4）：
-    - BAAI/bge-reranker-v2-m3: 多語言，支援中英文（推薦）
-    - BAAI/bge-reranker-base: 英文
-    - BAAI/bge-reranker-large: 英文，更準確但更慢
-
-    Args:
-        model_name: 模型名稱（僅本地模式使用）
-        use_remote: 是否使用遠程 API
-        remote_api_url: 遠程 API URL（僅遠程模式使用）
-    """
-    return Reranker(model_name, use_remote, remote_api_url)
-
-
 if __name__ == "__main__":
-    # 測試 Re-ranker
+    # 測試 Reranker
     print("=" * 60)
-    print("Testing Re-ranker")
+    print("Testing Reranker")
     print("=" * 60)
-
-    # 創建 Re-ranker
-    reranker = create_reranker()
 
     # 測試數據
     query = "What is the capital of France?"
@@ -311,28 +204,24 @@ if __name__ == "__main__":
             "score": 0.7,
             "chunk_id": 2,
         },
-        {
-            "page_content": "French cuisine is world famous.",
-            "score": 0.5,
-            "chunk_id": 3,
-        },
     ]
 
     print(f"\nQuery: {query}")
-    print("\nOriginal ranking (by score):")
-    for i, chunk in enumerate(
-        sorted(chunks, key=lambda x: x["score"], reverse=True), 1
-    ):
+    print("\nOriginal ranking:")
+    for i, chunk in enumerate(sorted(chunks, key=lambda x: x["score"], reverse=True), 1):
         print(f"  {i}. [score={chunk['score']:.2f}] {chunk['page_content'][:50]}...")
 
-    # Re-rank
-    reranked = reranker.rerank(query, chunks, top_k=3, return_scores=True)
-
-    print("\nAfter re-ranking:")
-    for i, chunk in enumerate(reranked, 1):
-        print(
-            f"  {i}. [rerank={chunk['rerank_score']:.4f}, orig={chunk['original_score']:.2f}] {chunk['page_content'][:50]}..."
-        )
+    # 測試本地模式（如果有安裝 sentence-transformers）
+    try:
+        print("\n--- Testing Local Mode ---")
+        reranker = Reranker(mode="local")
+        reranked = reranker.rerank(query, chunks, top_k=3, return_scores=True)
+        
+        print("\nAfter re-ranking (local):")
+        for i, chunk in enumerate(reranked, 1):
+            print(f"  {i}. [rerank={chunk.get('rerank_score', 0):.4f}] {chunk['page_content'][:50]}...")
+    except:
+        print("\n⚠️  Local reranker not available")
 
     print("\n" + "=" * 60)
     print("Test completed!")
