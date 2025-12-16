@@ -24,7 +24,7 @@ LANGUAGE_CONFIG = {
     "en": {
         "use_rerank": True,
         "stage1_top_k": 25,
-        "final_top_k": 1,
+        "final_top_k": 2,
         "retriever_type": "dense",
     }
 }
