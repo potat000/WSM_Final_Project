@@ -17,8 +17,8 @@ USE_REMOTE_RERANKER = True  # True: 提交環境(遠程API), False: 本地測試
 LANGUAGE_CONFIG = {
     "zh": {
         "use_rerank": False,
-        "stage1_top_k": 10,
-        "final_top_k": 3,
+        "stage1_top_k": 20,
+        "final_top_k": 5,
         "retriever_type": "bm25",
     },
     "en": {
