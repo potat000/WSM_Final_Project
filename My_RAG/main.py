@@ -18,13 +18,13 @@ LANGUAGE_CONFIG = {
     "zh": {
         "use_rerank": True,
         "stage1_top_k": 20,
-        "final_top_k": 5,
+        "final_top_k": 3,
         "retriever_type": "bm25",
     },
     "en": {
         "use_rerank": True,
         "stage1_top_k": 25,
-        "final_top_k": 2,
+        "final_top_k": 1,
         "retriever_type": "dense",
     }
 }
