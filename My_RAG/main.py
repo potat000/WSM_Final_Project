@@ -273,6 +273,7 @@ def main(
 
         # Stage 2: Reranking（如果啟用）
         if use_rerank and reranker is not None and retrieved_chunks:
+            print("執行reranker!")
             retrieved_chunks = reranker.rerank(
                 query=query_text,
                 chunks=retrieved_chunks,
@@ -298,7 +299,7 @@ def main(
         if language == "zh":
             answer = generate_answer(query_text, retrieved_chunks, language)
         else:
-            answer = generate_answer(query_text, retrieved_chunks[:2],language)
+            answer = generate_answer(query_text, retrieved_chunks,language)
         # if language == "zh":
         #     answer = generate_answer(query_text, retrieved_chunks, language)
         # elif language == "en" and not multi_ref:
@@ -327,7 +328,7 @@ def main(
             #     chunk["page_content"] for chunk in retrieved_chunks
             # ]
             query["prediction"]["references"] = [
-                chunk["page_content"] for chunk in retrieved_chunks[:2]
+                chunk["page_content"] for chunk in retrieved_chunks
             ]
 
 

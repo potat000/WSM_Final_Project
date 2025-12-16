@@ -44,7 +44,7 @@ def format_context(context_chunks: list) -> str:
             meta.get('hospital_patient_name')
         )
         print(f"測試 source ({i}):", source_name)
-        formatted_parts.append(f"[{source_name}]\n{content}")
+        formatted_parts.append(f"[source:{source_name}]\n{content}")
     
     return "\n\n".join(formatted_parts)
 
