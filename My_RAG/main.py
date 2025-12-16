@@ -46,7 +46,7 @@ def get_retrieval_config(query_type, language, domain=""):
             "多文档时间序列问题": {"stage1_top_k": 30, "final_top_k": 4},  # ← 改為 4
             "多文档对比问题": {"stage1_top_k": 35, "final_top_k": 5},  # ← 改為 5 (需要更多)
         }
-        return configs_zh.get(query_type, {"stage1_top_k": 20, "final_top_k": 3})
+        config = configs_zh.get(query_type, {"stage1_top_k": 20, "final_top_k": 3})
     
     # 英文配置 (final_top_k = 2，保持你的設定)
     elif language == "en":
@@ -60,11 +60,26 @@ def get_retrieval_config(query_type, language, domain=""):
             "Multi-document Time Sequence Question": {"stage1_top_k": 30, "final_top_k": 3},
             "Summarization Question": {"stage1_top_k": 25, "final_top_k": 2},
         }
-        return configs_en.get(query_type, {"stage1_top_k": 25, "final_top_k": 2})
+        config = configs_en.get(query_type, {"stage1_top_k": 25, "final_top_k": 2})
     
     # 其他語言預設
     else:
-        return {"stage1_top_k": 20, "final_top_k": 3}
+        config = {"stage1_top_k": 20, "final_top_k": 3}
+        
+    # ✅ 根據 Domain 微調
+    if domain == "Finance":
+        # 金融：精確數字，減少候選
+        config["final_top_k"] = max(2, config["final_top_k"] - 1)
+    
+    elif domain == "Law":
+        # 法律：精確用詞，減少候選
+        config["final_top_k"] = max(2, config["final_top_k"] - 1)
+    
+    elif domain == "Medical":
+        # 醫療：需要上下文，增加候選
+        config["final_top_k"] = min(6, config["final_top_k"] + 1)
+    
+    return config
 
 
 def prepare_chroma_data(chunks):
