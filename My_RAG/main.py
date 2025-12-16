@@ -11,7 +11,7 @@ from tqdm import tqdm
 from utils import load_jsonl, save_jsonl
 
 # Reranker 配置
-USE_REMOTE_RERANKER = True  # True: 提交環境(遠程API), False: 本地測試
+USE_REMOTE_RERANKER = False  # True: 提交環境(遠程API), False: 本地測試
 
 # 語言特定配置
 LANGUAGE_CONFIG = {
@@ -28,6 +28,43 @@ LANGUAGE_CONFIG = {
         "retriever_type": "dense",
     }
 }
+
+def get_retrieval_config(query_type, language, domain=""):
+    """
+    根據查詢類型和語言動態調整檢索參數
+    ✅ 完整支援中英文 Query Types (基於 Tutorial1)
+    ✅ 使用測試出的最佳 final_top_k: 中文3, 英文2
+    """
+    # 中文配置 (final_top_k = 3，基於你的測試結果)
+    if language == "zh":
+        configs_zh = {
+            "事实性问题": {"stage1_top_k": 15, "final_top_k": 3},  # ← 改為 3
+            "无关无解问": {"stage1_top_k": 20, "final_top_k": 2},  # ← 改為 2
+            "多跳推理问题": {"stage1_top_k": 30, "final_top_k": 5},  # ← 保持 5 (需要更多)
+            "总结性问题": {"stage1_top_k": 25, "final_top_k": 4},  # ← 改為 4
+            "多文档信息整合问题": {"stage1_top_k": 35, "final_top_k": 5},  # ← 改為 5 (需要更多)
+            "多文档时间序列问题": {"stage1_top_k": 30, "final_top_k": 4},  # ← 改為 4
+            "多文档对比问题": {"stage1_top_k": 35, "final_top_k": 5},  # ← 改為 5 (需要更多)
+        }
+        return configs_zh.get(query_type, {"stage1_top_k": 20, "final_top_k": 3})
+    
+    # 英文配置 (final_top_k = 2，保持你的設定)
+    elif language == "en":
+        configs_en = {
+            "Factual Question": {"stage1_top_k": 20, "final_top_k": 2},
+            "Multi-hop Reasoning Question": {"stage1_top_k": 30, "final_top_k": 3},  # 多跳推理需要更多
+            "Summary Question": {"stage1_top_k": 25, "final_top_k": 2},
+            "Irrelevant Unsolvable Question": {"stage1_top_k": 20, "final_top_k": 2},
+            "Multi-document Information Integration Question": {"stage1_top_k": 35, "final_top_k": 3},
+            "Multi-document Comparison Question": {"stage1_top_k": 35, "final_top_k": 3},
+            "Multi-document Time Sequence Question": {"stage1_top_k": 30, "final_top_k": 3},
+            "Summarization Question": {"stage1_top_k": 25, "final_top_k": 2},
+        }
+        return configs_en.get(query_type, {"stage1_top_k": 25, "final_top_k": 2})
+    
+    # 其他語言預設
+    else:
+        return {"stage1_top_k": 20, "final_top_k": 3}
 
 
 def prepare_chroma_data(chunks):
@@ -217,6 +254,11 @@ def main(
 
     for query in tqdm(queries, desc="Processing Queries"):
         query_text = query["query"]["content"]
+        
+        query_type = query["query"].get("query_type", "")
+        domain = query.get("domain", "")
+        dynamic_config = get_retrieval_config(query_type, language, domain)
+        
         multi_ref = False
         # 1. 改用 findall 抓取所有公司名稱
         target_companies = []
@@ -258,10 +300,10 @@ def main(
         # Stage 1: 檢索候選文檔
         if use_rerank:
             # 使用 reranker: 先檢索更多候選
-            retrieve_k = stage1_top_k
+            retrieve_k = dynamic_config["stage1_top_k"]
         else:
             # 不使用 reranker: 直接檢索最終數量
-            retrieve_k = final_top_k
+            retrieve_k = dynamic_config["final_top_k"]
             
          # 執行檢索（根據 retriever 類型決定是否使用 where_filter）
         if retriever_type == "dense" and where_filter is not None:
@@ -315,7 +357,7 @@ def main(
         if language == "zh":
             # 中文：保存所有 chunks
             query["prediction"]["references"] = [
-                chunk["page_content"] for chunk in retrieved_chunks
+                chunk["page_content"] for chunk in retrieved_chunks[:dynamic_config["final_top_k"]]
             ]
         else:  # English
             # 英文：只保存第一個
