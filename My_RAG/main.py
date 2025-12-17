@@ -38,26 +38,26 @@ def get_retrieval_config(query_type, language, domain=""):
     # 中文配置 (final_top_k = 3，基於你的測試結果)
     if language == "zh":
         configs_zh = {
-            "事实性问题": {"stage1_top_k": 15, "final_top_k": 3},  # ← 改為 3
-            "无关无解问": {"stage1_top_k": 20, "final_top_k": 2},  # ← 改為 2
-            "多跳推理问题": {"stage1_top_k": 30, "final_top_k": 5},  # ← 保持 5 (需要更多)
-            "总结性问题": {"stage1_top_k": 25, "final_top_k": 4},  # ← 改為 4
-            "多文档信息整合问题": {"stage1_top_k": 35, "final_top_k": 5},  # ← 改為 5 (需要更多)
-            "多文档时间序列问题": {"stage1_top_k": 30, "final_top_k": 4},  # ← 改為 4
-            "多文档对比问题": {"stage1_top_k": 35, "final_top_k": 5},  # ← 改為 5 (需要更多)
+            "事实性问题": {"stage1_top_k": 12, "final_top_k": 2},
+            "无关无解问": {"stage1_top_k": 12, "final_top_k": 2},
+            "多跳推理问题": {"stage1_top_k": 30, "final_top_k": 5},
+            "总结性问题": {"stage1_top_k": 28, "final_top_k": 4},
+            "多文档信息整合问题": {"stage1_top_k": 40, "final_top_k": 6},
+            "多文档时间序列问题": {"stage1_top_k": 30, "final_top_k": 5},
+            "多文档对比问题": {"stage1_top_k": 40, "final_top_k": 6},
         }
         config = configs_zh.get(query_type, {"stage1_top_k": 20, "final_top_k": 3})
     
     # 英文配置 (final_top_k = 2，保持你的設定)
     elif language == "en":
         configs_en = {
-            "Factual Question": {"stage1_top_k": 20, "final_top_k": 2},
-            "Multi-hop Reasoning Question": {"stage1_top_k": 30, "final_top_k": 3},  # 多跳推理需要更多
+            "Factual Question": {"stage1_top_k": 18, "final_top_k": 2},
+            "Multi-hop Reasoning Question": {"stage1_top_k": 35, "final_top_k": 3},
             "Summary Question": {"stage1_top_k": 25, "final_top_k": 2},
-            "Irrelevant Unsolvable Question": {"stage1_top_k": 20, "final_top_k": 2},
-            "Multi-document Information Integration Question": {"stage1_top_k": 35, "final_top_k": 3},
-            "Multi-document Comparison Question": {"stage1_top_k": 35, "final_top_k": 3},
-            "Multi-document Time Sequence Question": {"stage1_top_k": 30, "final_top_k": 3},
+            "Irrelevant Unsolvable Question": {"stage1_top_k": 18, "final_top_k": 2},
+            "Multi-document Information Integration Question": {"stage1_top_k": 40, "final_top_k": 4},
+            "Multi-document Comparison Question": {"stage1_top_k": 40, "final_top_k": 4},
+            "Multi-document Time Sequence Question": {"stage1_top_k": 35, "final_top_k": 3},
             "Summarization Question": {"stage1_top_k": 25, "final_top_k": 2},
         }
         config = configs_en.get(query_type, {"stage1_top_k": 25, "final_top_k": 2})
@@ -65,7 +65,8 @@ def get_retrieval_config(query_type, language, domain=""):
     # 其他語言預設
     else:
         config = {"stage1_top_k": 20, "final_top_k": 3}
-        
+    
+    '''
     # ✅ 根據 Domain 微調
     if domain == "Finance":
         # 金融：精確數字，減少候選
@@ -78,6 +79,7 @@ def get_retrieval_config(query_type, language, domain=""):
     elif domain == "Medical":
         # 醫療：需要上下文，增加候選
         config["final_top_k"] = min(6, config["final_top_k"] + 1)
+    '''
     
     return config
 
