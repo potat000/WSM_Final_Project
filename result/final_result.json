@@ -1,18 +1,18 @@
 {
   "score_zh.jsonl": {
-    "Sentences_Precision": 0.13142391551462038,
+    "Sentences_Precision": 0.13495121985328373,
     "Sentences_Recall": 0.7708598774920868,
-    "Words_Precision": 0.20445125568791475,
+    "Words_Precision": 0.212043280227792,
     "Words_Recall": 0.8236607142857143,
     "ROUGELScore": 0.3962375739755587,
     "completeness": 0.5428571428571429,
     "hallucination": 0.07619047619047618,
     "irrelevance": 0.38095238095238093,
-    "Words_F1": 0.3275877962997328,
-    "Sentences_F1": 0.2245622146786749,
+    "Words_F1": 0.33726184426651157,
+    "Sentences_F1": 0.2296913365455174,
     "factual_score": 0.46666666666666673,
     "Generation_Total_Score": 0.4314521203211127,
-    "Retrieval_Total_Score": 0.27607500548920383
+    "Retrieval_Total_Score": 0.2834765904060145
   },
   "score_en.jsonl": {
     "Sentences_Precision": 0.18220813349061182,

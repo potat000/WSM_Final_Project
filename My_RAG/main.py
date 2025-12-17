@@ -11,15 +11,15 @@ from tqdm import tqdm
 from utils import load_jsonl, save_jsonl
 
 # Reranker 配置
-USE_REMOTE_RERANKER = True  # True: 提交環境(遠程API), False: 本地測試
+USE_REMOTE_RERANKER = False  # True: 提交環境(遠程API), False: 本地測試
 
 # 語言特定配置
 LANGUAGE_CONFIG = {
     "zh": {
         "use_rerank": True,
         "stage1_top_k": 20,
-        "final_top_k": 3,
-        "retriever_type": "bm25",
+        "final_top_k": 5,
+        "retriever_type": "dense",
     },
     "en": {
         "use_rerank": True,
