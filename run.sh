@@ -17,9 +17,8 @@ run_results() {
     
     log "[INFO] Running inference for language: ${language}"
     
-    # BM25 + Re-rank (Stage1: top-20 → Stage2: top-3)
     python ./My_RAG/main.py \
-        --query_path ./dragonball_dataset/queries_new/queries_${language}_100.jsonl \
+        --query_path ./dragonball_dataset/queries_test/test_queries_${language}.jsonl \
         --docs_path ./dragonball_dataset/dragonball_docs.jsonl \
         --language ${language} \
         --output ./predictions/predictions_${language}.jsonl \
@@ -28,7 +27,7 @@ run_results() {
     log "[INFO] Checking output format for language: ${language}"
     
     python ./check_output_format.py \
-        --query_file ./dragonball_dataset/queries_new/queries_${language}_100.jsonl \
+        --query_file ./dragonball_dataset/queries_test/test_queries_${language}.jsonl \
         --processed_file ./predictions/predictions_${language}.jsonl
     
     if [ $? -eq 0 ]; then

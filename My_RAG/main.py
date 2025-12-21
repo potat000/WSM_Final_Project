@@ -5,7 +5,7 @@ import re
 from chunker import chunk_documents
 from database import ChromaDBManager
 from generator import generate_answer
-from retriever import create_retriever,create_dense_retriever,create_bm25_retriever
+from retriever import create_dense_retriever,create_bm25_retriever,create_pyserini_retriever,SimpleHybridRetriever
 from reranker import Reranker
 from tqdm import tqdm
 from utils import load_jsonl, save_jsonl
@@ -16,16 +16,16 @@ USE_REMOTE_RERANKER = False  # True: 提交環境(遠程API), False: 本地測�
 # 語言特定配置
 LANGUAGE_CONFIG = {
     "zh": {
-        "use_rerank": True,
+        "use_rerank": False,
         "stage1_top_k": 20,
         "final_top_k": 5,
-        "retriever_type": "dense",
+        "retriever_type": "sparse",
     },
     "en": {
-        "use_rerank": True,
+        "use_rerank": False,
         "stage1_top_k": 25,
         "final_top_k": 2,
-        "retriever_type": "dense",
+        "retriever_type": "sparse",
     }
 }
 
@@ -87,7 +87,7 @@ def main(
     print(f"Loaded {len(docs_for_chunking)} documents.")
     print(f"Loaded {len(queries)} queries.")
 
-    # 載入公司名單 (進行query正規化搜索)
+    # 2.載入公司名單 (進行query正規化搜索)
     company_pattern = None
     try:
         if os.path.exists('./dragonball_dataset/company_names.txt'):
@@ -108,12 +108,12 @@ def main(
     except Exception as e:
         print(f"⚠️ 載入公司名單時發生錯誤: {e}")
 
-    # 2. Chunk Documents
+    # 3. Chunk Documents
     print("Chunking documents...")
     chunks = chunk_documents(docs_for_chunking, language)
     print(f"Created {len(chunks)} chunks.")
 
-    # 3. Initialize ChromaDB
+    # 4. Initialize ChromaDB
     chroma_manager = None
     print(f"\n{'=' * 60}")
     print("Initializing ChromaDB for Hybrid Retrieval...")
@@ -168,7 +168,8 @@ def main(
         print("Falling back to BM25 only")
         chroma_manager = None
 
-    # 4. Create Retriever
+    # 5. Create Retriever
+    ## 強制修改成兩個retriever結果都要用到並作hybrid
     print(f"\n{'=' * 60}")
     print("Creating retriever...")
     print(f"{'=' * 60}")
@@ -178,21 +179,26 @@ def main(
         language=language,
         chroma_manager=chroma_manager,
     )
-    bm25_retriever = create_bm25_retriever(
+    
+    pyserini_retriever = create_pyserini_retriever(
         chunks=chunks,
         language=language
     )
-
-    # 根據配置選擇 base retriever
-    if retriever_type == "dense":
-        base_retriever = dense_retriever
-        print(f"✅ 使用 Dense Retriever")
+# 3. 設定權重 (參考其他組的邏輯)
+    if language == "zh":
+        # 中文環境：通常 BM25 對專有名詞更準，權重給高一點
+        weights = {"dense": 0.4, "sparse": 0.6}
     else:
-        base_retriever = bm25_retriever
-        print(f"✅ 使用 BM25 Retriever")
-    print("Retriever created successfully.")
-    
-    # 5. Initialize Reranker (if needed)
+        # 英文環境：一般預設 0.5/0.5 或視情況調整
+        weights = {"dense": 0.5, "sparse": 0.5}
+
+    print(f"Initializing Hybrid Retriever with weights: {weights}")
+    hybrid_retriever = SimpleHybridRetriever(
+        dense_retriever=dense_retriever,
+        sparse_retriever=pyserini_retriever,
+        weights=weights
+    )    
+    # 6. Initialize Reranker (if needed)
     reranker = None
     if use_rerank:
         print(f"\n{'=' * 60}")
@@ -209,7 +215,7 @@ def main(
             print("⚠️ 將使用單階段檢索")
             use_rerank = False
 
-    # 6. Process Queries
+    # 7. Process Queries
     print(f"\n{'=' * 60}")
     print("Processing queries...")
     print(f"{'=' * 60}")
@@ -263,13 +269,11 @@ def main(
             # 不使用 reranker: 直接檢索最終數量
             retrieve_k = final_top_k
             
-         # 執行檢索（根據 retriever 類型決定是否使用 where_filter）
-        if retriever_type == "dense" and where_filter is not None:
-            retrieved_chunks = base_retriever.retrieve(
-                query_text, top_k=retrieve_k, where_filter=where_filter
+        retrieved_chunks = hybrid_retriever.retrieve(
+                query_text, 
+                top_k=retrieve_k, 
+                where_filter=where_filter
             )
-        else:
-            retrieved_chunks = base_retriever.retrieve(query_text, top_k=retrieve_k)
 
         # Stage 2: Reranking（如果啟用）
         if use_rerank and reranker is not None and retrieved_chunks:
@@ -332,7 +336,7 @@ def main(
             ]
 
 
-    # 7. Save Results
+    # 8. Save Results
     save_jsonl(output_path, queries)
     print(f"\n{'=' * 60}")
     print(f"✅ Predictions saved at '{output_path}'")
