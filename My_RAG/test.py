@@ -1,6 +1,5 @@
 from typing import List, Dict, Union 
 from database import ChromaDBManager
-from retriever import create_retriever
 import chromadb
 # # 模擬向量
 # DUMMY_VECTOR = [0.123, 0.456, 0.789] 
@@ -79,14 +78,49 @@ import chromadb
 # )
 
 if __name__ == "__main__":
-    # 1. 連接到您指定的持久化路徑
-    client = chromadb.PersistentClient(path="./my_vector_db")
+    db_path = "./my_vector_db"
+    client = chromadb.PersistentClient(path=db_path)
 
-    # 2. 獲取指定的集合 (Collection)
-    collection = client.get_collection(name="docs_en")
+    def audit_collection(collection_name, expected_lang):
+        print(f"\n🕵️‍♀️ 正在審計 Collection: {collection_name} (預期語言: {expected_lang})")
+        
+        try:
+            coll = client.get_collection(collection_name)
+        except:
+            print("❌ Collection 不存在")
+            return
 
-    # 3. 查看前 1 筆資料 (peek)
-    # 這會回傳一個字典，包含 'ids', 'embeddings', 'metadatas', 'documents'
-    data_sample = collection.peek(limit=1)
-    import pprint
-    pprint.pprint(data_sample)
+        # 讀取所有 metadata (不讀取 embedding 以節省記憶體)
+        data = coll.get(include=["metadatas", "documents"])
+        
+        wrong_count = 0
+        total = len(data["ids"])
+        
+        for i in range(total):
+            meta = data["metadatas"][i]
+            doc = data["documents"][i]
+            
+            # 判斷依據 1: 檢查 Metadata (如果你的原始資料有 language 欄位)
+            if meta and "language" in meta:
+                if meta["language"] != expected_lang:
+                    wrong_count += 1
+                    if wrong_count <= 3: # 只印出前幾個錯誤範例
+                        print(f"  ⚠️ 發現錯誤 Metadata! ID: {data['ids'][i]}, Meta: {meta}")
+            
+            # 判斷依據 2: 簡單的內容偵測 (備用方案)
+            # 如果預期是中文，但前50字裡面英文單字太多，可能就是混入了
+            # 這只是一個粗略的 heuristic
+            if expected_lang == "zh":
+                # 簡單檢查：如果一段話裡面英文字元超過 80% 可能是錯的
+                english_char_count = sum(1 for c in doc if c.isascii())
+                if len(doc) > 0 and (english_char_count / len(doc)) > 0.8:
+                    print(f"  ⚠️ 內容疑似英文 (在中文庫中): {doc[:50]}...")
+                    
+        if wrong_count == 0:
+            print(f"✅ 檢查完畢：所有 {total} 筆資料看起來都符合 Metadata 標記。")
+        else:
+            print(f"❌ 警告：發現 {wrong_count} 筆資料可能放錯位置！")
+
+    # 執行檢查
+    audit_collection("docs_zh", "zh")
+    audit_collection("docs_en", "en")

@@ -72,7 +72,6 @@ class SimpleHybridRetriever:
                 # 這裡假設 doc 裡有 'metadata' 欄位，且內容結構正確
                 if self._matches_filter(doc.get("metadata"), where_filter):
                     filtered_sparse.append(doc)
-                    print("過濾成功！！")
             sparse_results = filtered_sparse
 
         # 4. 正規化

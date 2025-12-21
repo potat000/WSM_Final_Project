@@ -63,41 +63,47 @@ def generate_answer(query: str, context_chunks: list, language: str = "en") -> s
     
     # 根據語言選擇 Prompt（嚴格版）
     if language == "zh":
-        prompt = f"""你是一個專業的問答助手。請根據以下提供的參考資料回答問題。
+        prompt = f"""你是一个专业的问答助手。请根据以下提供的参考资料回答问题。
 
-【參考資料，皆與問題提及之公司相關】
-{formatted_context}
+    【参考资料，皆与问题提及之公司相关】
+    {formatted_context}
 
-【問題】
-{query}
+    【问题】
+    {query}
 
-【重要規則】
-1. 你的答案必須完全基於上述參考資料
-2. 不要使用參考資料以外的知識或資訊
-3. 不要推測、推論或猜測
-4. 如果參考資料中沒有足夠的資訊來回答問題，請明確說明「根據提供的參考資料，無法完整回答此問題」
-5. 請提供清晰、完整、準確的答案，包含所有相關的重要細節
-6. 直接回答問題，不需要額外的開場白或結尾
+    【重要规则】
 
-【答案】"""
+    你的答案必须完全基于上述参考资料
+
+    不要使用参考资料以外的知识或信息
+
+    不要推测、推论或猜测
+
+    如果参考资料中没有足够的信息来回答问题，请明确说明「根据提供的参考资料，无法完整回答此问题」
+
+    请提供清晰、完整、准确的答案，包含所有相关的重要细节
+
+    直接回答问题，不需要额外的开场白或结尾
+
+    【答案】"""
     else:  # English
         prompt = f"""You are a professional question-answering assistant. Answer the question based solely on the provided reference materials.
 
-[Reference Materials,all are relevant to the companies mentioned in the query]
-{formatted_context}
+    [Reference Materials,all are relevant to the companies mentioned in the query]
+    {formatted_context}
 
-[Question]
-{query}
+    [Question]
+    {query}
 
-[Critical Rules]
-1. Your answer must be based entirely on the reference materials above
-2. Do not use knowledge or information outside the provided references
-3. Do not speculate, infer, or guess
-4. If the provided documents do not contain the answer, explicitly state 'Unable to answer
-5. Provide a clear, complete, and accurate answer that includes all relevant important details
-6. Answer directly without unnecessary preamble or conclusion
+    [Critical Rules]
+    1. Your answer must be based entirely on the reference materials above
+    2. Do not use knowledge or information outside the provided references
+    3. Do not speculate, infer, or guess
+    4. If the provided documents do not contain the answer, explicitly state 'Unable to answer
+    5. Provide a clear, complete, and accurate answer that includes all relevant important details
+    6. Answer directly without unnecessary preamble or conclusion
 
-[Answer]"""
+    [Answer]"""
     
     # 調用 LLM
     ollama_config = load_ollama_config()

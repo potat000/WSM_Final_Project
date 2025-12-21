@@ -27,6 +27,27 @@ LANGUAGE_CONFIG = {
     }
 }
 
+def load_chunks_from_chroma(collection):
+    """從現有的 ChromaDB collection 讀取所有資料並還原成 chunks 列表"""
+    print("正在從 ChromaDB 讀取快取資料...")
+    
+    # 讀取所有資料 (包含 document 和 metadata)
+    # limit=None 確保讀取全部，include 參數確保我們拿到需要的欄位
+    results = collection.get(include=["documents", "metadatas"])
+    
+    loaded_chunks = []
+    total = len(results["ids"])
+    
+    for i in range(total):
+        chunk = {
+            "page_content": results["documents"][i],
+            "metadata": results["metadatas"][i]
+        }
+        loaded_chunks.append(chunk)
+        
+    print(f"✅ 成功從 DB 復原 {len(loaded_chunks)} 個 Chunks (跳過 LLM 生成)")
+    return loaded_chunks
+
 def prepare_chroma_data(chunks):
     """準備 ChromaDB 需要的數據格式"""
     texts = []
@@ -105,46 +126,46 @@ def main(
         print(f"⚠️ 載入公司名單時發生錯誤: {e}")
 
     # 3. Chunk Documents
-    print("Chunking documents...")
-    chunks = chunk_documents(docs_for_chunking, language)
-    print(f"Created {len(chunks)} chunks.")
-
-    # 4. Initialize ChromaDB
+    chunks = []
     chroma_manager = None
+    collection_name = f"docs_{language}"
+    
     print(f"\n{'=' * 60}")
-    print("Initializing ChromaDB for Hybrid Retrieval...")
+    print("Initializing ChromaDB & Checking Cache...")
     print(f"{'=' * 60}")
 
     try:
-        collection_name = f"docs_{language}"
-
-        # 初始化 ChromaDBManager
+        # 先連接 ChromaDB
         chroma_manager = ChromaDBManager(
             persist_directory=chroma_path, collection_names=[collection_name]
         )
-
-        # 檢查是否需要建立索引
         collection = chroma_manager.get_collection(collection_name)
         existing_count = collection.count() if collection else 0
 
-        if existing_count == 0:
-            print(f"Building ChromaDB index for {len(chunks)} chunks...")
+        # 判斷是否需要重新 Chunking
+        if existing_count > 0:
+            # A計畫：DB 裡有資料 -> 直接拿出來用
+            print(f"✅ 檢測到現有索引 ({existing_count} items)，跳過 LLM 生成步驟。")
+            chunks = load_chunks_from_chroma(collection)
+        else:
+            # B計畫：DB 是空的 -> 執行昂貴的 Chunking + LLM Context
+            print("⚠️ 未檢測到索引，開始執行文檔分塊與 LLM 上下文生成 (這會花點時間)...")
+            chunks = chunk_documents(docs_for_chunking, language)
+            print(f"Created {len(chunks)} chunks.")
+            
+            # 清洗 metadata (保留原本邏輯)
             print("Cleaning metadata entities...")
             for chunk in chunks:
-                # 判斷 chunks 是字典還是物件 (根據您的實作調整)
-                # 假設 chunk 是字典，且 metadata 在 chunk['metadata']
-                # 如果 chunk 是 LangChain Document 物件，請改用 chunk.metadata
                 meta = chunk.get('metadata') if isinstance(chunk, dict) else chunk.metadata
                 if meta:
-                    # 1. 清洗醫院名稱 (去除 _病患名)
                     if "hospital_patient_name" in meta and meta["hospital_patient_name"]:
                         full_name = meta["hospital_patient_name"]
-                        # 只保留底線前的部分
                         clean_name = full_name.split('_')[0] 
                         meta["hospital_patient_name"] = clean_name
-            # 準備數據
-            texts, metadatas, ids = prepare_chroma_data(chunks)
+            
             # 存入 ChromaDB
+            print(f"Building ChromaDB index for {len(chunks)} chunks...")
+            texts, metadatas, ids = prepare_chroma_data(chunks)
             success = chroma_manager.save_chunks_to_chroma(
                 collection_name=collection_name,
                 texts=texts,
@@ -152,19 +173,17 @@ def main(
                 ids=ids,
                 batch_size=500,
             )
-
             if not success:
-                print("⚠️  ChromaDB indexing failed, using BM25 only")
-                chroma_manager = None
-        else:
-            print(f"✅ Using existing ChromaDB index ({existing_count} items)")
+                print("⚠️ ChromaDB indexing failed.")
 
     except Exception as e:
-        print(f"⚠️  ChromaDB initialization failed: {e}")
-        print("Falling back to BM25 only")
-        chroma_manager = None
+        print(f"⚠️ ChromaDB Error: {e}")
+        # 如果 DB 掛了，迫不得已只好現場重算 (Fallback)
+        if not chunks:
+            print("Fallback: Re-calculating chunks in memory...")
+            chunks = chunk_documents(docs_for_chunking, language)
 
-    # 5. Create Retriever
+    # 4. Create Retriever
     ## 強制修改成兩個retriever結果都要用到並作hybrid
     print(f"\n{'=' * 60}")
     print("Creating retriever...")
@@ -180,7 +199,7 @@ def main(
         chunks=chunks,
         language=language
     )
-    # 3. 設定權重 (參考其他組的邏輯)
+    # 設定權重
     if language == "zh":
         # 中文環境：通常 BM25 對專有名詞更準，權重給高一點
         weights = {"dense": 0.4, "sparse": 0.6}
@@ -194,7 +213,7 @@ def main(
         sparse_retriever=pyserini_retriever,
         weights=weights
     )    
-    # 6. Initialize Reranker (if needed)
+    # 5. Initialize Reranker (if needed)
     reranker = None
     if use_rerank:
         print(f"\n{'=' * 60}")
@@ -211,7 +230,7 @@ def main(
             print("⚠️ 將使用單階段檢索")
             use_rerank = False
 
-    # 7. Process Queries
+    # 6. Process Queries
     print(f"\n{'=' * 60}")
     print("Processing queries...")
     print(f"{'=' * 60}")
@@ -301,7 +320,7 @@ def main(
             ]
 
 
-    # 8. Save Results
+    # 7. Save Results
     save_jsonl(output_path, queries)
     print(f"\n{'=' * 60}")
     print(f"✅ Predictions saved at '{output_path}'")
