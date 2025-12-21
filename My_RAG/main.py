@@ -180,7 +180,7 @@ def main(
         chunks=chunks,
         language=language
     )
-# 3. 設定權重 (參考其他組的邏輯)
+    # 3. 設定權重 (參考其他組的邏輯)
     if language == "zh":
         # 中文環境：通常 BM25 對專有名詞更準，權重給高一點
         weights = {"dense": 0.4, "sparse": 0.6}
@@ -280,36 +280,14 @@ def main(
                 top_k=final_top_k,
                 return_scores=True,
             )
-            
-        '''
-        # 檢索相關文檔
-        if language == "en":
-            # dense retriever
-            print("英文檢索")
-            retrieved_chunks = dense_retriever.retrieve(
-                query_text, top_k=top_k, where_filter= where_filter
-            )
-        else:
-            print("中文檢索")
-            # BM25Retriever
-            retrieved_chunks = bm25_retriever.retrieve(query_text, top_k=top_k)
-        '''
         
         # 生成答案
         if language == "zh":
             answer = generate_answer(query_text, retrieved_chunks, language)
         else:
             answer = generate_answer(query_text, retrieved_chunks,language)
-        # if language == "zh":
-        #     answer = generate_answer(query_text, retrieved_chunks, language)
-        # elif language == "en" and not multi_ref:
-        #     print("單一檢索元")
-        #     answer = generate_answer(query_text,[retrieved_chunks[0]],language)
-        # else:
-        #     answer = generate_answer(query_text, retrieved_chunks, language)
-        #answer = generate_answer(query_text, retrieved_chunks, language)
+
         query["prediction"]["content"] = answer
-        print(retrieved_chunks)
         
         # 儲存 References（根據語言分離策略）
         if language == "zh":
@@ -317,16 +295,7 @@ def main(
             query["prediction"]["references"] = [
                 chunk["page_content"] for chunk in retrieved_chunks
             ]
-        else:  # English
-            # 英文：只保存第一個
-            # if multi_ref:
-            #     query["prediction"]["references"] = [chunk["page_content"] for chunk in retrieved_chunks]
-            # else:
-            #     query["prediction"]["references"] = [retrieved_chunks[0]["page_content"]]
-
-            # query["prediction"]["references"] = [
-            #     chunk["page_content"] for chunk in retrieved_chunks
-            # ]
+        else: 
             query["prediction"]["references"] = [
                 chunk["page_content"] for chunk in retrieved_chunks
             ]

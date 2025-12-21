@@ -15,18 +15,18 @@
     "Retrieval_Total_Score": 0.2686454226587798
   },
   "score_en.jsonl": {
-    "Sentences_Precision": 0.09640157998928316,
-    "Sentences_Recall": 0.26562405328228117,
-    "Words_Precision": 0.40353689600113823,
-    "Words_Recall": 0.5405840447581131,
-    "ROUGELScore": 0.21840852882104378,
-    "completeness": 0.553125,
-    "hallucination": 0.38437499999999997,
-    "irrelevance": 0.0625,
-    "Words_F1": 0.4621136933452596,
-    "Sentences_F1": 0.1414627919474493,
-    "factual_score": 0.16875,
-    "Generation_Total_Score": 0.1935792644105219,
-    "Retrieval_Total_Score": 0.30178824264635445
+    "Sentences_Precision": 0.17078174527853934,
+    "Sentences_Recall": 0.33432634335861705,
+    "Words_Precision": 0.45124049448598674,
+    "Words_Recall": 0.6019047994750941,
+    "ROUGELScore": 0.2672745176825393,
+    "completeness": 0.56875,
+    "hallucination": 0.35312499999999997,
+    "irrelevance": 0.078125,
+    "Words_F1": 0.515795533448336,
+    "Sentences_F1": 0.22607769582716875,
+    "factual_score": 0.215625,
+    "Generation_Total_Score": 0.24144975884126965,
+    "Retrieval_Total_Score": 0.37093661463775235
   }
 }

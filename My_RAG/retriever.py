@@ -10,82 +10,97 @@ import subprocess
 from pyserini.search.lucene import LuceneSearcher
 
 class SimpleHybridRetriever:
-    """
-    將 Dense Retriever 和 Sparse (BM25) Retriever 的結果進行加權融合。
-    支援 Min-Max Normalization 以解決分數量級不同之問題。
-    """
     def __init__(self, dense_retriever, sparse_retriever, weights={"dense": 0.5, "sparse": 0.5}):
         self.dense_retriever = dense_retriever
         self.sparse_retriever = sparse_retriever
         self.weights = weights
 
     def _normalize_scores(self, results):
-        """將分數正規化到 [0, 1] 區間"""
+        """Min-Max Normalization"""
         if not results:
             return []
-        
         scores = [r["score"] for r in results]
         min_score = min(scores)
         max_score = max(scores)
-        
-        # 避免除以零
         if max_score == min_score:
             return results
-
         for r in results:
-            # 覆蓋原始分數為正規化後的分數 (0~1)
-            # 注意：這裡修改了字典，建議在 retrieve 內部 copy 一份，避免影響外部引用
             r["normalized_score"] = (r["score"] - min_score) / (max_score - min_score)
-        
         return results
 
+    def _matches_filter(self, metadata, where_filter):
+        """
+        手動檢查 metadata 是否符合 ChromaDB 風格的 filter
+        支援簡單的 {"key": "value"} 和 {"$or": [...]}
+        """
+        if not where_filter:
+            return True
+        if not metadata:
+            return False
+
+        # 處理 $or 邏輯 (您的代碼中有用到)
+        if "$or" in where_filter:
+            conditions = where_filter["$or"]
+            for cond in conditions:
+                # 假設 cond 是單一鍵值對 {'company_name': 'XXX'}
+                k, v = list(cond.items())[0]
+                if metadata.get(k) == v:
+                    return True
+            return False
+            
+        # 處理單一條件 (一般情況)
+        for key, value in where_filter.items():
+            if metadata.get(key) != value:
+                return False
+        return True
+
     def retrieve(self, query, top_k=5, where_filter=None):
-        # 1. 為了確保融合效果，先分別抓取更多的候選集 (例如 top_k * 2 或固定 50 筆)
-        candidate_k = top_k * 2 
+        # 1. 擴大候選範圍 (因為過濾後數量會變少)
+        candidate_k = top_k * 3 
         
-        # 2. 執行 Dense Search (支援 filter)
-        # 注意：檢查您的 dense_retriever 是否支援 where_filter，若不支援需拿掉該參數
+        # 2. 執行檢索
+        # Dense 自帶過濾，所以結果已經是乾淨的
         dense_results = self.dense_retriever.retrieve(query, top_k=candidate_k, where_filter=where_filter)
         
-        # 3. 執行 Sparse Search (Pyserini 通常不支援 metadata filter，故不傳)
+        # Sparse (Pyserini) 不帶過濾，會回傳髒資料
         sparse_results = self.sparse_retriever.retrieve(query, top_k=candidate_k)
 
-        # 4. 分數正規化 (關鍵步驟！)
-        # BM25 分數可能是 10~30，向量分數可能是 0.7~0.9，必須統一量級
+        # 3. 對 Sparse 結果進行「後處理過濾」 (關鍵修正！)
+        if where_filter:
+            filtered_sparse = []
+            for doc in sparse_results:
+                # 這裡假設 doc 裡有 'metadata' 欄位，且內容結構正確
+                if self._matches_filter(doc.get("metadata"), where_filter):
+                    filtered_sparse.append(doc)
+                    print("過濾成功！！")
+            sparse_results = filtered_sparse
+
+        # 4. 正規化
         dense_results = self._normalize_scores(dense_results)
         sparse_results = self._normalize_scores(sparse_results)
 
-        # 5. 建立融合池 (使用 chunk_id 或 id 作為 key)
-        # 假設結果 dict 裡都有 "chunk_id" 或 "id"
+        # 5. 加權融合
         fused_scores = {}
-        doc_map = {}  # 用來存文檔內容，最後回傳用
+        doc_map = {}
 
-        # 處理 Dense 結果
         for doc in dense_results:
             cid = doc.get("chunk_id") or doc.get("id")
             doc_map[cid] = doc
-            # 這裡使用 normalized_score
-            score = doc.get("normalized_score", 0.0)
-            fused_scores[cid] = fused_scores.get(cid, 0.0) + (score * self.weights["dense"])
+            fused_scores[cid] = fused_scores.get(cid, 0.0) + (doc.get("normalized_score", 0.0) * self.weights["dense"])
 
-        # 處理 Sparse 結果
         for doc in sparse_results:
             cid = doc.get("chunk_id") or doc.get("id")
-            # 如果 Dense 沒抓到這個，就存入 doc_map
             if cid not in doc_map:
                 doc_map[cid] = doc
-            
-            score = doc.get("normalized_score", 0.0)
-            fused_scores[cid] = fused_scores.get(cid, 0.0) + (score * self.weights["sparse"])
+            fused_scores[cid] = fused_scores.get(cid, 0.0) + (doc.get("normalized_score", 0.0) * self.weights["sparse"])
 
-        # 6. 排序並取 Top K
+        # 6. 排序與取 Top K
         sorted_ids = sorted(fused_scores.items(), key=lambda item: item[1], reverse=True)[:top_k]
         
         final_results = []
         for cid, score in sorted_ids:
-            chunk = doc_map[cid].copy() # 複製一份
-            chunk["score"] = score      # 更新為融合後的分數
-            # 移除暫存的 normalized_score 以免混淆
+            chunk = doc_map[cid].copy()
+            chunk["score"] = score
             if "normalized_score" in chunk:
                 del chunk["normalized_score"]
             final_results.append(chunk)
