@@ -11,7 +11,7 @@ from tqdm import tqdm
 from utils import load_jsonl, save_jsonl
 
 # Reranker 配置
-USE_REMOTE_RERANKER = True  # True: 提交環境(遠程API), False: 本地測試
+USE_REMOTE_RERANKER = False  # True: 提交環境(遠程API), False: 本地測試
 
 # 語言特定配置
 LANGUAGE_CONFIG = {
