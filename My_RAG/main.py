@@ -11,21 +11,19 @@ from tqdm import tqdm
 from utils import load_jsonl, save_jsonl
 
 # Reranker 配置
-USE_REMOTE_RERANKER = False  # True: 提交環境(遠程API), False: 本地測試
+USE_REMOTE_RERANKER = True  # True: 提交環境(遠程API), False: 本地測試
 
 # 語言特定配置
 LANGUAGE_CONFIG = {
     "zh": {
-        "use_rerank": False,
+        "use_rerank": True,
         "stage1_top_k": 20,
-        "final_top_k": 5,
-        "retriever_type": "sparse",
+        "final_top_k": 5
     },
     "en": {
-        "use_rerank": False,
+        "use_rerank": True,
         "stage1_top_k": 25,
-        "final_top_k": 2,
-        "retriever_type": "sparse",
+        "final_top_k": 2
     }
 }
 
@@ -63,14 +61,12 @@ def main(
     # 根據語言獲取配置
     lang_config = LANGUAGE_CONFIG.get(language, {})
     use_rerank = lang_config.get("use_rerank", False)
-    retriever_type = lang_config.get("retriever_type", "bm25")
     stage1_top_k = lang_config.get("stage1_top_k", 20)
     final_top_k = lang_config.get("final_top_k", 3)
     
     print(f"\n{'=' * 60}")
     print(f"配置信息:")
     print(f"  語言: {language}")
-    print(f"  檢索器類型: {retriever_type}")
     print(f"  使用 Reranker: {use_rerank}")
     if use_rerank:
         print(f"  Reranker 模式: {'遠程API' if USE_REMOTE_RERANKER else '本地模型'}")
