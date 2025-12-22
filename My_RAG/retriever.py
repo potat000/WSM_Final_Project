@@ -56,8 +56,8 @@ class SimpleHybridRetriever:
 
     def retrieve(self, query, top_k=5, where_filter=None):
         # 1. 擴大候選範圍 (因為過濾後數量會變少)
-        candidate_k = top_k * 3 
-        
+        candidate_k = top_k
+
         # 2. 執行檢索
         # Dense 自帶過濾，所以結果已經是乾淨的
         dense_results = self.dense_retriever.retrieve(query, top_k=candidate_k, where_filter=where_filter)

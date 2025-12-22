@@ -237,14 +237,12 @@ def main(
 
     for query in tqdm(queries, desc="Processing Queries"):
         query_text = query["query"]["content"]
-           
+        query_domain = query["domain"]
         multi_ref = False
-        # 1. 改用 findall 抓取所有公司名稱
+        # 改用 findall 抓取所有公司名稱
         target_companies = []
         if company_pattern:
             # findall 會回傳一個 list，包含所有匹配的字串
-            # 注意：如果你的 regex 有多個括號 group，這裡回傳的格式可能會變 tuple，需視 regex 寫法而定
-            # 假設你的 pattern 是簡單的 (CleanCo|Retail Emporium|...)
             found = company_pattern.findall(query_text)
             
             # 去除重複 (set) 並過濾雜訊
@@ -257,18 +255,18 @@ def main(
         where_filter = None
         
         if target_companies:
-            # 1. 定義你要搜尋的所有 Metadata 欄位名稱
+            # 定義你要搜尋的所有 Metadata 欄位名稱
             # 請確保這裡的 key 與你 ingest 入庫時的 key 一模一樣
             search_keys = ["company_name", "court_name", "hospital_patient_name"]
             
-            # 2. 建立所有可能的組合條件
+            # 建立所有可能的組合條件
             # 邏輯：(公司名是A OR 法院名是A OR 醫院名是A) OR (公司名是B OR ...)
             or_conditions = []
             for entity in target_companies:
                 for key in search_keys:
                     or_conditions.append({key: entity})
             
-            # 3. 生成 Filter
+            # 生成 Filter
             if len(or_conditions) == 1:
                 # 極少見情況：只搜一個名稱且只搜一個欄位
                 where_filter = or_conditions[0]
@@ -302,9 +300,9 @@ def main(
         
         # 生成答案
         if language == "zh":
-            answer = generate_answer(query_text, retrieved_chunks, language)
+            answer = generate_answer(query_text, retrieved_chunks, language, query_domain)
         else:
-            answer = generate_answer(query_text, retrieved_chunks,language)
+            answer = generate_answer(query_text, retrieved_chunks,language,query_domain)
 
         query["prediction"]["content"] = answer
         
