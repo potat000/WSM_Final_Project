@@ -237,10 +237,10 @@ Answer: Unable to answer.
 ### Answer:
 """
 
-def _get_domain_prompt_zh(query, context, domain):
+def _get_domain_prompt_zh(query, context, query_domain):
     """Get Chinese prompt based on domain."""
     
-    if domain == "Finance":
+    if query_domain == "Finance":
         return f"""你是一位金融分析专家。你的任务是**仅**基于提供的上下文回答金融相关问题。
 
 ### 上下文数据：
@@ -288,7 +288,7 @@ def _get_domain_prompt_zh(query, context, domain):
 ### 回答：
 """
     
-    elif domain == "Medical":
+    elif query_domain == "Medical":
         return f"""你是一位医疗信息专家。你的任务是**仅**基于提供的上下文回答医疗相关问题。
 
 ### 上下文数据：
@@ -337,7 +337,7 @@ def _get_domain_prompt_zh(query, context, domain):
 ### 回答：
 """
     
-    elif domain == "Law":
+    elif query_domain == "Law":
         return f"""你是一位法律信息专家。你的任务是**仅**基于提供的上下文回答法律相关问题。
 
 ### 上下文数据：
