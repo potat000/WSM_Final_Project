@@ -9,7 +9,7 @@ from retriever import create_dense_retriever,create_bm25_retriever,create_pyseri
 from reranker import Reranker
 from tqdm import tqdm
 from utils import load_jsonl, save_jsonl
-
+from generator import _domain_router_en,_domain_router_zh
 # Reranker 配置
 USE_REMOTE_RERANKER = True  # True: 提交環境(遠程API), False: 本地測試
 
@@ -237,8 +237,6 @@ def main(
 
     for query in tqdm(queries, desc="Processing Queries"):
         query_text = query["query"]["content"]
-        query_domain = query["domain"]
-        multi_ref = False
         # 改用 findall 抓取所有公司名稱
         target_companies = []
         if company_pattern:
@@ -297,11 +295,13 @@ def main(
                 top_k=final_top_k,
                 return_scores=True,
             )
-        
+
         # 生成答案
         if language == "zh":
+            query_domain = _domain_router_zh(query_text,retrieved_chunks)
             answer = generate_answer(query_text, retrieved_chunks, language, query_domain)
         else:
+            query_domain = _domain_router_en(query_text,retrieved_chunks)
             answer = generate_answer(query_text, retrieved_chunks,language,query_domain)
 
         query["prediction"]["content"] = answer

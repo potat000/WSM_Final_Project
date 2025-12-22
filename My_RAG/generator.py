@@ -48,10 +48,98 @@ def format_context(context_chunks: list) -> str:
     
     return "\n\n".join(formatted_parts)
 
+def _domain_router_zh(user_query, context_snippet_preview):
+    """
+    Classify the domain of the query based on query and context (Chinese version).
+    Returns one of: 'FINANCE', 'MEDICAL', 'LAW', 'GENERAL'
+    """
+    prompt = f'''你是一位分类专家。
+分析以下用户查询和检索到的上下文片段。
+判断这个问题属于哪个领域。
+
+只输出以下其中一个标签（只需输出单词，不要括号）：
+- FINANCE（关于公司、营收、股票、并购、企业时间线、财务报告、ESG报告的问题）
+- MEDICAL（关于病患、症状、医院、诊断、病史、治疗的问题）
+- LAW（关于法院案件、判决、诉讼、合约、法律纠纷、被告、原告、裁决的问题）
+- GENERAL（其他任何问题）
+
+用户查询：{user_query}
+上下文片段：{context_snippet_preview[:500]}
+
+领域：'''
+    try:
+        ollama_config = load_ollama_config()
+        client = Client(host=ollama_config["host"])
+        response = client.generate(
+            model=ollama_config["model"], 
+            prompt=prompt,
+            stream=False, 
+            options={
+                "temperature": 0.0,
+                "num_ctx": 2048,
+            })
+        result = response["response"].strip().upper()
+        # Extract domain from response
+        if "FINANCE" in result:
+            return "FINANCE"
+        elif "MEDICAL" in result:
+            return "MEDICAL"
+        elif "LAW" in result:
+            return "LAW"
+        else:
+            return "GENERAL"
+    except Exception as e:
+        print(f"Domain router error: {e}")
+        return "GENERAL"
+    
+def _domain_router_en(user_query, context_snippet_preview):
+    """
+    Classify the domain of the query based on query and context (English version).
+    Returns one of: 'FINANCE', 'MEDICAL', 'LAW', 'GENERAL'
+    """
+    prompt = f'''You are a classification expert.
+Analyze the following user query and retrieved context snippet.
+Determine the domain of the inquiry.
+
+Output ONLY one of the following tags (just the word, no brackets):
+- FINANCE (For questions about companies, revenue, stocks, acquisitions, business timeline, financial reports, ESG reports)
+- MEDICAL (For questions about patients, symptoms, hospitals, diagnosis, medical history, treatments)
+- LAW (For questions about court cases, judgments, lawsuits, contracts, legal disputes, defendants, plaintiffs, verdicts)
+- GENERAL (For anything else)
+
+User Query: {user_query}
+Context Snippet: {context_snippet_preview[:500]}
+
+Domain:'''
+    try:
+        ollama_config = load_ollama_config()
+        client = Client(host=ollama_config["host"])
+        response = client.generate(
+            model=ollama_config["model"], 
+            prompt=prompt,
+            stream=False, 
+            options={
+                "temperature": 0.0,
+                "num_ctx": 2048,
+            })
+        result = response["response"].strip().upper()
+        # Extract domain from response
+        if "FINANCE" in result:
+            return "FINANCE"
+        elif "MEDICAL" in result:
+            return "MEDICAL"
+        elif "LAW" in result:
+            return "LAW"
+        else:
+            return "GENERAL"
+    except Exception as e:
+        print(f"Domain router error: {e}")
+        return "GENERAL"
+    
 def _get_domain_prompt_en(query, context, query_domain):
     """Get English prompt based on domain."""
     
-    if query_domain == "Finance":
+    if query_domain == "FINANCE":
         return f"""You are a financial analysis expert. Your task is to answer financial questions based **ONLY** on the provided context.
 
 ### Context Data:
@@ -99,7 +187,7 @@ Answer: Unable to answer.
 ### Answer:
 """
     
-    elif query_domain == "Medical":
+    elif query_domain == "MEDICAL":
         return f"""You are a medical information specialist. Your task is to answer medical questions based **ONLY** on the provided context.
 
 ### Context Data:
@@ -148,7 +236,7 @@ Answer: Unable to answer.
 ### Answer:
 """
     
-    elif query_domain == "Law":
+    elif query_domain == "LAW":
         return f"""You are a legal information specialist. Your task is to answer legal questions based **ONLY** on the provided context.
 
 ### Context Data:
@@ -240,7 +328,7 @@ Answer: Unable to answer.
 def _get_domain_prompt_zh(query, context, query_domain):
     """Get Chinese prompt based on domain."""
     
-    if query_domain == "Finance":
+    if query_domain == "FINANCE":
         return f"""你是一位金融分析专家。你的任务是**仅**基于提供的上下文回答金融相关问题。
 
 ### 上下文数据：
@@ -288,7 +376,7 @@ def _get_domain_prompt_zh(query, context, query_domain):
 ### 回答：
 """
     
-    elif query_domain == "Medical":
+    elif query_domain == "MEDICAL":
         return f"""你是一位医疗信息专家。你的任务是**仅**基于提供的上下文回答医疗相关问题。
 
 ### 上下文数据：
@@ -337,7 +425,7 @@ def _get_domain_prompt_zh(query, context, query_domain):
 ### 回答：
 """
     
-    elif query_domain == "Law":
+    elif query_domain == "LAW":
         return f"""你是一位法律信息专家。你的任务是**仅**基于提供的上下文回答法律相关问题。
 
 ### 上下文数据：
