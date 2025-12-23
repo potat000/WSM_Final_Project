@@ -11,19 +11,19 @@ from tqdm import tqdm
 from utils import load_jsonl, save_jsonl
 from generator import _domain_router_en,_domain_router_zh
 # Reranker 配置
-USE_REMOTE_RERANKER = False  # True: 提交環境(遠程API), False: 本地測試
+USE_REMOTE_RERANKER = True  # True: 提交環境(遠程API), False: 本地測試
 
 # 語言特定配置
 LANGUAGE_CONFIG = {
     "zh": {
         "use_rerank": True,
-        "stage1_top_k": 100,
+        "stage1_top_k": 20,
         "final_top_k": 3
     },
     "en": {
         "use_rerank": True,
-        "stage1_top_k": 100,
-        "final_top_k": 3
+        "stage1_top_k": 20,
+        "final_top_k": 5
     }
 }
 
@@ -211,7 +211,8 @@ def main(
     hybrid_retriever = SimpleHybridRetriever(
         dense_retriever=dense_retriever,
         sparse_retriever=pyserini_retriever,
-        weights=weights
+        weights=weights,
+        language=language
     )    
 
     # 5. Initialize Reranker (if needed)
@@ -287,7 +288,26 @@ def main(
                 where_filter=where_filter
             )
         #retrieved_chunks = dense_retriever.retrieve(query_text,retrieve_k,where_filter)
-
+        # =================================================
+        # 🟢 新增：去重邏輯 (Deduplication)
+        # =================================================
+        seen_ids = set()
+        unique_chunks = []
+        for chunk in retrieved_chunks:
+            # 優先嘗試抓取 metadata 裡的 id，如果沒有則退而求其次用內容本身當 key
+            # 假設 chunk 是 dict 或 object，這裡做個相容性處理
+            if isinstance(chunk, dict):
+                c_id = chunk.get("metadata", {}).get("id") or chunk.get("page_content")
+            else: # 假設是 Document 物件
+                c_id = chunk.metadata.get("id") or chunk.page_content
+            
+            if c_id not in seen_ids:
+                seen_ids.add(c_id)
+                unique_chunks.append(chunk)
+        
+        # 將去重後的結果指派回去
+        retrieved_chunks = unique_chunks
+        # =================================================
         # Stage 2: Reranking（如果啟用）
         if use_rerank and reranker is not None and retrieved_chunks:
             print("執行reranker!")

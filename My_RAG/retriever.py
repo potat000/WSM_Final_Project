@@ -9,11 +9,15 @@ import shutil
 import subprocess
 from pyserini.search.lucene import LuceneSearcher
 
+from typing import List, Dict, Any
+from utils import llm_generate
+
 class SimpleHybridRetriever:
-    def __init__(self, dense_retriever, sparse_retriever, weights={"dense": 0.5, "sparse": 0.5}):
+    def __init__(self, dense_retriever, sparse_retriever, weights={"dense": 0.5, "sparse": 0.5}, language="en"):
         self.dense_retriever = dense_retriever
         self.sparse_retriever = sparse_retriever
         self.weights = weights
+        self.language = language  # 🟢 新增：為了讓 LLM 知道用什麼語言
 
     def _normalize_scores(self, results):
         """Min-Max Normalization"""
@@ -29,56 +33,109 @@ class SimpleHybridRetriever:
         return results
 
     def _matches_filter(self, metadata, where_filter):
-        """
-        手動檢查 metadata 是否符合 ChromaDB 風格的 filter
-        支援簡單的 {"key": "value"} 和 {"$or": [...]}
-        """
+        """ 手動檢查 metadata 是否符合 filter """
         if not where_filter:
             return True
         if not metadata:
             return False
 
-        # 處理 $or 邏輯 (您的代碼中有用到)
         if "$or" in where_filter:
             conditions = where_filter["$or"]
             for cond in conditions:
-                # 假設 cond 是單一鍵值對 {'company_name': 'XXX'}
                 k, v = list(cond.items())[0]
                 if metadata.get(k) == v:
                     return True
             return False
             
-        # 處理單一條件 (一般情況)
         for key, value in where_filter.items():
             if metadata.get(key) != value:
                 return False
         return True
 
     def retrieve(self, query, top_k=5, where_filter=None):
-        # 1. 擴大候選範圍 (因為過濾後數量會變少)
-        candidate_k = top_k
-
-        # 2. 執行檢索
-        # Dense 自帶過濾，所以結果已經是乾淨的
-        dense_results = self.dense_retriever.retrieve(query, top_k=candidate_k, where_filter=where_filter)
+        """
+        整合 Query Expansion 與 HyDE 的混合檢索
+        """
         
-        # Sparse (Pyserini) 不帶過濾，會回傳髒資料
-        sparse_results = self.sparse_retriever.retrieve(query, top_k=candidate_k)
+        # =================================================
+        # 🟢 新增 Step A: Query Expansion (針對 Sparse/BM25)
+        # =================================================
+        if self.language == "en":
+            prompt_exp = f"Please generate 3 potential search keywords for this query; Query: {query}"
+        else:
+            prompt_exp = f"请针对这个 Query 生成 3 个潜在的搜寻关键字；Query: {query}"
+            
+        # 呼叫 LLM (這裡假設 llm_generate 是一個可用的函數)
+        # 如果為了速度考量，這一段可以做成非同步或設開關
+        try:
+            expanded_keywords = llm_generate(prompt_exp)
+            # print(f"[Query Expansion]: {expanded_keywords}")
+            expanded_query = f"{query} {expanded_keywords}"
+        except Exception as e:
+            print(f"⚠️ Query Expansion failed: {e}")
+            expanded_query = query
 
-        # 3. 對 Sparse 結果進行「後處理過濾」 (關鍵修正！)
+        # =================================================
+        # 🟢 新增 Step B: HyDE (針對 Dense/Vector)
+        # =================================================
+        # 註：有些實作會讓 HyDE 取代原 Query，有些是疊加。
+        # 這裡為了保險起見，我們保留原意圖，可以選擇性開啟。
+        if self.language == "en":
+            prompt_hyde = f"Please write a short passage that answers the question: {query}"
+        else:
+            prompt_hyde = f"请写一段简短的文字回答这个问题: {query}"
+            
+        hyde_query = query
+        try:
+            hyde_passage = llm_generate(prompt_hyde)
+            # print(f"[HyDE]: {hyde_passage}")
+            
+            # 策略選擇：
+            # 1. 純 HyDE：hyde_query = hyde_passage
+            # 2. 混合：hyde_query = f"{query} {hyde_passage}"
+            # 3. 僅原句 (你範例中的做法)：保持不變
+            
+            # 這裡示範策略 2 (通常效果比較平衡)
+            hyde_query = f"{query} \n {hyde_passage}" 
+        except Exception as e:
+            print(f"⚠️ HyDE failed: {e}")
+            hyde_query = query
+
+
+        # =================================================
+        # 原有邏輯 Step 1: 執行檢索 (使用修改後的 Query)
+        # =================================================
+        
+        # 1. 擴大候選範圍
+        candidate_k = top_k * 5
+
+        # 2. Dense 檢索 (使用 HyDE Query)
+        # print(f"Searching Dense with: {hyde_query[:50]}...")
+        dense_results = self.dense_retriever.retrieve(hyde_query, top_k=candidate_k, where_filter=where_filter)
+        
+        # 3. Sparse 檢索 (使用 Expanded Query)
+        # print(f"Searching Sparse with: {expanded_query[:50]}...")
+        sparse_results = self.sparse_retriever.retrieve(expanded_query, top_k=candidate_k)
+
+        # =================================================
+        # 原有邏輯 Step 2: 過濾與正規化 (保持不變)
+        # =================================================
+
+        # 對 Sparse 結果進行「後處理過濾」
         if where_filter:
             filtered_sparse = []
             for doc in sparse_results:
-                # 這裡假設 doc 裡有 'metadata' 欄位，且內容結構正確
                 if self._matches_filter(doc.get("metadata"), where_filter):
                     filtered_sparse.append(doc)
             sparse_results = filtered_sparse
 
-        # 4. 正規化
+        # 正規化
         dense_results = self._normalize_scores(dense_results)
         sparse_results = self._normalize_scores(sparse_results)
 
-        # 5. 加權融合
+        # =================================================
+        # 原有邏輯 Step 3: 加權融合 (保持不變)
+        # =================================================
         fused_scores = {}
         doc_map = {}
 
@@ -93,7 +150,7 @@ class SimpleHybridRetriever:
                 doc_map[cid] = doc
             fused_scores[cid] = fused_scores.get(cid, 0.0) + (doc.get("normalized_score", 0.0) * self.weights["sparse"])
 
-        # 6. 排序與取 Top K
+        # 排序與取 Top K
         sorted_ids = sorted(fused_scores.items(), key=lambda item: item[1], reverse=True)[:top_k]
         
         final_results = []
