@@ -11,19 +11,19 @@ from tqdm import tqdm
 from utils import load_jsonl, save_jsonl
 from generator import _domain_router_en,_domain_router_zh
 # Reranker 配置
-USE_REMOTE_RERANKER = True  # True: 提交環境(遠程API), False: 本地測試
+USE_REMOTE_RERANKER = False  # True: 提交環境(遠程API), False: 本地測試
 
 # 語言特定配置
 LANGUAGE_CONFIG = {
     "zh": {
         "use_rerank": True,
-        "stage1_top_k": 20,
-        "final_top_k": 5
+        "stage1_top_k": 100,
+        "final_top_k": 3
     },
     "en": {
         "use_rerank": True,
-        "stage1_top_k": 25,
-        "final_top_k": 2
+        "stage1_top_k": 100,
+        "final_top_k": 3
     }
 }
 
@@ -207,12 +207,13 @@ def main(
         # 英文環境：一般預設 0.5/0.5 或視情況調整
         weights = {"dense": 0.5, "sparse": 0.5}
 
-    # print(f"Initializing Hybrid Retriever with weights: {weights}")
-    # hybrid_retriever = SimpleHybridRetriever(
-    #     dense_retriever=dense_retriever,
-    #     sparse_retriever=pyserini_retriever,
-    #     weights=weights
-    # )    
+    print(f"Initializing Hybrid Retriever with weights: {weights}")
+    hybrid_retriever = SimpleHybridRetriever(
+        dense_retriever=dense_retriever,
+        sparse_retriever=pyserini_retriever,
+        weights=weights
+    )    
+
     # 5. Initialize Reranker (if needed)
     reranker = None
     if use_rerank:
@@ -280,12 +281,12 @@ def main(
             # 不使用 reranker: 直接檢索最終數量
             retrieve_k = final_top_k
             
-        # retrieved_chunks = hybrid_retriever.retrieve(
-        #         query_text, 
-        #         top_k=retrieve_k, 
-        #         where_filter=where_filter
-        #     )
-        retrieved_chunks = dense_retriever.retrieve(query_text,retrieve_k,where_filter)
+        retrieved_chunks = hybrid_retriever.retrieve(
+                query_text, 
+                top_k=retrieve_k, 
+                where_filter=where_filter
+            )
+        #retrieved_chunks = dense_retriever.retrieve(query_text,retrieve_k,where_filter)
 
         # Stage 2: Reranking（如果啟用）
         if use_rerank and reranker is not None and retrieved_chunks:

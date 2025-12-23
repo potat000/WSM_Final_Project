@@ -3,6 +3,9 @@ from pathlib import Path
 import yaml
 
 
+import yaml
+from pathlib import Path
+
 def load_ollama_config() -> dict:
     configs_folder = Path(__file__).parent.parent / "configs"
     config_paths = [
@@ -18,13 +21,27 @@ def load_ollama_config() -> dict:
     if config_path is None:
         raise FileNotFoundError("No configuration file found.")
 
-    with open(config_path, "r") as file:
+    with open(config_path, "r", encoding="utf-8") as file:
         config = yaml.safe_load(file)
 
+    # 驗證 Ollama 基本設定
     assert "ollama" in config, "Ollama configuration not found in config file."
-    assert "host" in config["ollama"], "Ollama host not specified in config file."
-    assert "model" in config["ollama"], "Ollama model not specified in config file."
-    return config["ollama"]
+    ollama_conf = config["ollama"]
+    
+    assert "host" in ollama_conf, "Ollama host not specified."
+    assert "model" in ollama_conf, "Ollama chat model (generation) not specified."
+    
+    # 新增：驗證 Embedding 模型設定
+    assert "embedding_model_en" in ollama_conf, "English embedding model not specified."
+    assert "embedding_model_zh" in ollama_conf, "Chinese embedding model not specified."
+
+    print(f"✅ Loaded Config from {config_path.name}:")
+    print(f"   - Host: {ollama_conf['host']}")
+    print(f"   - Chat Model: {ollama_conf['model']}")
+    print(f"   - Embed EN: {ollama_conf['embedding_model_en']}")
+    print(f"   - Embed ZH: {ollama_conf['embedding_model_zh']}")
+
+    return ollama_conf
 
 
 def format_context(context_chunks: list) -> str:
